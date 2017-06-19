@@ -1,0 +1,55 @@
+# Autotools ignore
+
+# http://www.gnu.org/software/automake
+
+Makefile.in
+
+# http://www.gnu.org/software/autoconf
+
+/autom4te.cache
+/aclocal.m4
+/compile
+/configure
+/depcomp
+/install-sh
+/missing
+/stamp-h1
+
+pkg/src/.deps
+pkg/src/*.o
+pkg/ipkg-*
+pkg/auto*
+
+# Misc files
+pkg/.built
+pkg/.configured_
+pkg/.prepared
+pkg/.quilt_checked
+pkg/.source_dir
+pkg/ABOUT-NLS
+pkg/AUTHORS
+pkg/COPYING
+pkg/ChangeLog
+pkg/Makefile
+pkg/NEWS
+pkg/aclocal.m4
+pkg/config.h
+pkg/config.h.in
+pkg/config.log
+pkg/config.rpath
+pkg/config.status
+pkg/configure
+pkg/depcomp
+pkg/install-sh
+pkg/missing
+pkg/src/Makefile
+pkg/src/provision
+pkg/stamp-h1
+pkg/src/freed
+pkg/src/libafsec.a
+pkg/ar-lib
+pkg/config.guess
+pkg/config.sub
+pkg/libtool
+pkg/ltmain.sh
+

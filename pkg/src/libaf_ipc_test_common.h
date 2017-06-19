@@ -1,0 +1,20 @@
+#ifndef __LIBAF_IPC_TEST_COMMON_H__
+#define __LIBAF_IPC_TEST_COMMON_H__
+
+enum {
+    CLIENT_TEST_BROADCAST_CLIENTCMDS = 0,  /* -b */
+    CLIENT_TEST_SERVERCMDS,                /* -s */
+    CLIENT_TEST_SERVERUNSOL,               /* -u */
+    CLIENT_SERVEREXIT,                     /* -q */
+    CLIENT_COMMANDS,
+    CLIENT_REPLIES
+};
+
+enum {
+    SERVER_BROADCAST_TO_CLIENTS = 0,
+    SERVER_COMMANDS_TO_CLIENT,
+    SERVER_UNSOL_TO_CLIENT,
+    SERVER_REPLIES
+};
+
+#endif // __LIBAF_IPC_TEST_COMMON_H__
