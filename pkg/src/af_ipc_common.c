@@ -389,8 +389,8 @@ void af_ipc_handle_receive_message(int fd, uint8_t *buf, int len,
         af_ipc_msghdr_t *msghdr = (af_ipc_msghdr_t *)&buf[pos];
         uint32_t seqNum = AF_IPC_GET_SEQ_ID(msghdr->seqNum);
         AFLOG_DEBUG3("handle_receive_message:len=%d,seqNum=%08x:received client message", len, seqNum);
-        if (pos + msghdr->len > len) {
-            AFLOG_ERR("handle_receive_message_bad_packet2:pos=%d,msghdr->len=%d, len=%d:bad receive packet; ignoring rest of packet",
+        if (pos + msghdr->len > len || msghdr->len < AF_IPC_MSGHDR_LEN) {
+            AFLOG_ERR("handle_receive_message_bad_packet2:pos=%d,msghdr->len=%d,len=%d:bad receive packet; ignoring rest of packet",
                       pos, msghdr->len, len);
             break;
         }
