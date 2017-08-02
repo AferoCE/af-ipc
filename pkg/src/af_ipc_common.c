@@ -143,6 +143,7 @@ af_ipc_util_shutdown_requests(af_ipc_req_control_t *req_control)
     while (req) {
         af_ipc_request_t *next = req->next;
         if (req->event) {
+            event_del(req->event);
             event_free(req->event);
             req->event = NULL;
         }
@@ -318,6 +319,7 @@ af_ipc_send(int fd, af_ipc_req_control_t *req_control, struct event_base *base,
                 timeout.tv_usec = (timeoutMs % 1000) * 1000;
 
                 evtimer_add(e, &timeout);
+                AFLOG_DEBUG3("ipc_send:timeout_sec=%d,timeout_usec=%d", timeout.tv_sec, timeout.tv_usec);
             } else {
                 err = errno;
                 AFLOG_ERR("af_ipc_send_evtimer_new:base_null=%d,errno=%d", base==NULL, errno);
@@ -355,6 +357,7 @@ af_ipc_send(int fd, af_ipc_req_control_t *req_control, struct event_base *base,
             pthread_mutex_lock(&req_control->mutex);
 
             if (req->event) {
+                event_del(req->event);
                 event_free(req->event);
                 req->event = NULL;
             }
@@ -480,6 +483,7 @@ void af_ipc_handle_receive_message(int fd, uint8_t *buf, int len,
                     AFLOG_DEBUG3("handle_receive_message:timeout=%d,event_NULL=%d:cancel request timer",
                                  pendingReq->timeout_val, pendingReq->event==NULL);
                     if (pendingReq->event) {
+                        event_del(pendingReq->event);
                         event_free(pendingReq->event);
                         pendingReq->event = NULL;
                     }
