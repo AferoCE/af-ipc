@@ -92,37 +92,37 @@ typedef struct {
 
 #define AF_RPC_SET_PARAM_AS_UINT8(_param,_value) \
     { \
-        _param.base = (void *)(uint32_t)_value; \
+        _param.base = (void *)(ptrdiff_t)_value; \
         _param.type = AF_RPC_TYPE_UINT8; \
     }
 
 #define AF_RPC_SET_PARAM_AS_UINT16(_param,_value) \
     { \
-        _param.base = (void *)(uint32_t)_value; \
+        _param.base = (void *)(ptrdiff_t)_value; \
         _param.type = AF_RPC_TYPE_UINT16; \
     }
 
 #define AF_RPC_SET_PARAM_AS_UINT32(_param,_value) \
     { \
-        _param.base = (void *)(uint32_t)_value; \
+        _param.base = (void *)(ptrdiff_t)_value; \
         _param.type = AF_RPC_TYPE_UINT32; \
     }
 
 #define AF_RPC_SET_PARAM_AS_INT8(_param,_value) \
     { \
-        _param.base = (void *)(int32_t)_value; \
+        _param.base = (void *)(ptrdiff_t)_value; \
         _param.type = AF_RPC_TYPE_INT8; \
     }
 
 #define AF_RPC_SET_PARAM_AS_INT16(_param,_value) \
     { \
-        _param.base = (void *)(int32_t)_value; \
+        _param.base = (void *)(ptrdiff_t)_value; \
         _param.type = AF_RPC_TYPE_INT16; \
     }
 
 #define AF_RPC_SET_PARAM_AS_INT32(_param,_value) \
     { \
-        _param.base = (void *)(int32_t)_value; \
+        _param.base = (void *)(ptrdiff_t)_value; \
         _param.type = AF_RPC_TYPE_INT32; \
     }
 

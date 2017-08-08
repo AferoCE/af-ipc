@@ -8,6 +8,7 @@
  */
 #include <string.h>
 #include <errno.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include "af_ipc_common.h"
 #include "af_log.h"
@@ -94,7 +95,6 @@ af_ipc_remove_request (af_ipc_req_control_t *req_control, uint32_t seqNum)
 int
 af_ipc_util_init_requests(af_ipc_req_control_t *req_control)
 {
-    int i;
     int ret;
 
     if (req_control == NULL) {
@@ -111,16 +111,6 @@ af_ipc_util_init_requests(af_ipc_req_control_t *req_control)
         req_control->mutexCreated = 1;
     }
     return ret;
-}
-
-static void
-free_req_list(af_ipc_request_t *req)
-{
-    while (req) {
-        af_ipc_request_t *next = req->next;
-        free(req);
-        req = next;
-    }
 }
 
 /* af_ipc_util_shutdown_requests
@@ -261,7 +251,7 @@ af_ipc_send(int fd, af_ipc_req_control_t *req_control, struct event_base *base,
 
     /* Check total size against receive buffer size */
     if (txBufferSize + sizeof(req_hdr) > AF_IPC_MAX_MSGLEN) {
-        AFLOG_ERR("ipc_send_size:txBufferSize=%d,maxSize=%d",txBufferSize, AF_IPC_MAX_MSGLEN - sizeof(req_hdr));
+        AFLOG_ERR("ipc_send_size:txBufferSize=%d,maxSize=%zd", txBufferSize, AF_IPC_MAX_MSGLEN - sizeof(req_hdr));
         errno = EINVAL;
         return -1;
     }
@@ -431,7 +421,7 @@ void af_ipc_handle_receive_message(int fd, uint8_t *buf, int len,
 
             /* call the client's receive callback */
             if (receiveCallback) {
-                AFLOG_DEBUG3("receiveCallback:pos=%d, buflen=%d",
+                AFLOG_DEBUG3("receiveCallback:pos=%d, buflen=%zd",
                              pos, msghdr->len - AF_IPC_MSGHDR_LEN);
 
                 receiveCallback(0, seqNum,
@@ -495,14 +485,14 @@ void af_ipc_handle_receive_message(int fd, uint8_t *buf, int len,
                 AFLOG_DEBUG3("handle_receive_message:seqNum=%08x:done with request; remove from pending", seqNum);
                 af_ipc_remove_request(req_control, seqNum);
             } else {
-                AFLOG_WARNING("handle_receive_message_no_req:seqNum=%08x:no request matching sequence number; dropping response");
+                AFLOG_WARNING("handle_receive_message_no_req:seqNum=%08x:no request matching sequence number; dropping response", seqNum);
             }
             pthread_mutex_unlock(&req_control->mutex);
             // *** end mutex lock ***
 
             /* call the application reply_callback function to handle the reply */
             if (callback) {
-                AFLOG_DEBUG3("responseCallback:pos=%d,buflen=%d",
+                AFLOG_DEBUG3("responseCallback:pos=%d,buflen=%zd",
                              pos, msghdr->len - AF_IPC_MSGHDR_LEN);
                 callback(0, seqNum,
                          (uint8_t *)&buf[pos + AF_IPC_MSGHDR_LEN], msghdr->len - AF_IPC_MSGHDR_LEN,

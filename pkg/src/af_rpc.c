@@ -7,6 +7,7 @@
  */
 
 #include <arpa/inet.h>
+#include <stddef.h>
 #include <string.h>
 #include "af_rpc.h"
 #include "af_log.h"
@@ -343,13 +344,13 @@ af_rpc_create_buffer_with_params(uint8_t *buf, int bufSize, af_rpc_param_t *para
             switch (type) {
                 case AF_RPC_TYPE_INT8 :
                 case AF_RPC_TYPE_UINT8 :
-                    buf[pos++] = (uint8_t)(uint32_t)params[i].base;
+                    buf[pos++] = (uint8_t)(ptrdiff_t)params[i].base;
                     break;
                 case AF_RPC_TYPE_INT16 :
                 case AF_RPC_TYPE_UINT16 :
                 {
                     uint16_t value;
-                    value = htons((uint16_t)(uint32_t)params[i].base);
+                    value = htons((uint16_t)(ptrdiff_t)params[i].base);
                     memcpy(&buf[pos], &value, sizeof(value));
                     pos += 2;
                     break;
@@ -358,7 +359,7 @@ af_rpc_create_buffer_with_params(uint8_t *buf, int bufSize, af_rpc_param_t *para
                 case AF_RPC_TYPE_UINT32 :
                 {
                     uint32_t value;
-                    value = htonl((uint32_t)params[i].base);
+                    value = htonl((uint32_t)(ptrdiff_t)params[i].base);
                     memcpy(&buf[pos], &value, sizeof(value));
                     pos += 4;
                     break;
@@ -469,13 +470,13 @@ int af_rpc_get_params_from_buffer(af_rpc_param_t *params, int numParams, uint8_t
                 case AF_RPC_TYPE_INT8 :
                 {
                     int8_t val = (int8_t)buf[pos++];
-                    params[param].base = (void *)(int32_t)val;
+                    params[param].base = (void *)(ptrdiff_t)val;
                     break;
                 }
                 case AF_RPC_TYPE_UINT8 :
                 {
                     uint8_t val = buf[pos++];
-                    params[param].base = (void *)(uint32_t)val;
+                    params[param].base = (void *)(ptrdiff_t)val;
                     break;
                 }
                 case AF_RPC_TYPE_INT16 :
@@ -487,7 +488,7 @@ int af_rpc_get_params_from_buffer(af_rpc_param_t *params, int numParams, uint8_t
                     if (val & 0x8000) {
                         val32 |= 0xffff0000;
                     }
-                    params[param].base = (void *)val32;
+                    params[param].base = (void *)(ptrdiff_t)val32;
                     pos += 2;
                     break;
                 }
@@ -496,7 +497,7 @@ int af_rpc_get_params_from_buffer(af_rpc_param_t *params, int numParams, uint8_t
                     uint16_t val;
                     memcpy(&val, &buf[pos], sizeof(val));
                     val = ntohs(val);
-                    params[param].base = (void *)(uint32_t)val;
+                    params[param].base = (void *)(ptrdiff_t)val;
                     pos += 2;
                     break;
                 }
@@ -506,7 +507,7 @@ int af_rpc_get_params_from_buffer(af_rpc_param_t *params, int numParams, uint8_t
                     uint32_t val;
                     memcpy(&val, &buf[pos], sizeof(val));
                     val = ntohl(val);
-                    params[param].base = (void *)val;
+                    params[param].base = (void *)(ptrdiff_t)val;
                     pos += 4;
                     break;
                 }

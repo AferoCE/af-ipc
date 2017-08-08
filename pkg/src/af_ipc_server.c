@@ -77,19 +77,6 @@ af_ipcs_find_unused_client(af_ipcs_server_t *s)
 }
 
 
-static af_ipcs_client_t *
-af_ipcs_find_client_by_fd(af_ipcs_server_t *s, int  client_fd)
-{
-    int i;
-    for (i=0; i<AF_IPCS_MAX_CLIENTS; i++) {
-        if (s->clients[i].client_fd == client_fd) {
-            return &(s->clients[i]);
-        }
-    }
-    return NULL;
-}
-
-
 /* find the client based on the client ID or cid */
 static af_ipcs_client_t *
 af_ipcs_find_client_by_cid(af_ipcs_server_t *s, int  cid)
@@ -229,7 +216,7 @@ af_ipcs_send_unsolicited (af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuf
 
     if (clientId == 0) {
         AFLOG_INFO("broadcast_message::");
-        int count, result = 0;
+        int count;
         for (count = 0; count < s->numClients; count++) {
             /* send the same message to every client on the server's db */
             if (s->clients[count].client_fd != AF_IPCS_NOT_INUSE) {
@@ -260,6 +247,8 @@ af_ipcs_send_unsolicited (af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuf
             result = -1;
         }
     }
+
+    return result;
 }
 
 /*
@@ -332,7 +321,7 @@ af_ipcs_server_on_recv(evutil_socket_t fd, short events, void *arg)
         while (1) {
             memset(buf, 0, sizeof(buf));
             recvmsg_len = recv(fd, buf, sizeof(buf), MSG_DONTWAIT);
-            AFLOG_DEBUG3("on_recv:recvmsg_len=%d", recvmsg_len);
+            AFLOG_DEBUG3("on_recv:recvmsg_len=%zd", recvmsg_len);
 
             if (recvmsg_len <= 0) { // EOF or error
                 if (recvmsg_len == 0) {
@@ -363,7 +352,7 @@ af_ipcs_server_on_recv(evutil_socket_t fd, short events, void *arg)
             else {  // we got a message from the client
                 af_ipc_handle_receive_message(fd, (uint8_t *)buf, recvmsg_len,
                                               client->cid, &client->req_control,
-                                              client->server->receiveCallback, 
+                                              client->server->receiveCallback,
 											  client->clientContext);
             }
         }
@@ -504,7 +493,7 @@ af_ipcs_init(struct event_base *base,
     memset(ss_path, 0, sizeof(ss_path));
     memset(&server_addr, 0, sizeof(server_addr));
 
-    sprintf(ss_path, "%s%s",IPC_SERVER_SOCK_PATH_PREFIX, name);
+    sprintf(ss_path, "%s%s", IPC_SERVER_SOCK_PATH_PREFIX, name);
     server_addr.sun_family = AF_UNIX;
     strncpy(server_addr.sun_path, ss_path, sizeof(server_addr.sun_path)-1);
 

@@ -45,8 +45,6 @@ af_ipcc_server_t *af_ipcc_get_server(struct event_base *base, char *name,
     int             addrlen;
     struct          sockaddr_un   remote;
     char            server_path[128];
-    struct event    *ev_client_recv;
-    int i;
 
     if (base == NULL) {
         AFLOG_ERR("ipc_client_get_server:base=NULL:bad event base");
@@ -124,7 +122,7 @@ af_ipcc_server_t *af_ipcc_get_server(struct event_base *base, char *name,
 static void
 af_ipcc_client_on_recv(int listenfd, short evtype, void *arg)
 {
-    char             recv_buffer[AF_IPC_MAX_MSGLEN];
+    uint8_t          recv_buffer[AF_IPC_MAX_MSGLEN];
     af_ipcc_server_t *server = (af_ipcc_server_t *)arg;
 	int              data_len;
 
@@ -308,4 +306,3 @@ void af_ipcc_shutdown(af_ipcc_server_t *s)
         free(s);
     }
 }
-
