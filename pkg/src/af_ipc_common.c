@@ -14,6 +14,13 @@
 #include "af_log.h"
 
 
+const char *af_ipc_server_sock_path_prefix = IPC_SERVER_DEFAULT_SOCK_PATH_PREFIX;
+
+void
+af_ipc_set_server_sock_path_prefix(const char *prefix) {
+    af_ipc_server_sock_path_prefix = prefix;
+}
+
 /* af_ipc_util_find_unused_request
  *
  * Find an unused slot in the request db (to store an incoming
@@ -309,7 +316,7 @@ af_ipc_send(int fd, af_ipc_req_control_t *req_control, struct event_base *base,
                 timeout.tv_usec = (timeoutMs % 1000) * 1000;
 
                 evtimer_add(e, &timeout);
-                AFLOG_DEBUG3("ipc_send:timeout_sec=%d,timeout_usec=%d", timeout.tv_sec, timeout.tv_usec);
+                AFLOG_DEBUG3("ipc_send:timeout_sec=%ld,timeout_usec=%ld", (long)timeout.tv_sec, (long)timeout.tv_usec);
             } else {
                 err = errno;
                 AFLOG_ERR("af_ipc_send_evtimer_new:base_null=%d,errno=%d", base==NULL, errno);

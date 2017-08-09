@@ -493,7 +493,7 @@ af_ipcs_init(struct event_base *base,
     memset(ss_path, 0, sizeof(ss_path));
     memset(&server_addr, 0, sizeof(server_addr));
 
-    sprintf(ss_path, "%s%s", IPC_SERVER_SOCK_PATH_PREFIX, name);
+    sprintf(ss_path, "%s%s", af_ipc_server_sock_path_prefix, name);
     server_addr.sun_family = AF_UNIX;
     strncpy(server_addr.sun_path, ss_path, sizeof(server_addr.sun_path)-1);
 

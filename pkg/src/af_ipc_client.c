@@ -71,7 +71,7 @@ af_ipcc_server_t *af_ipcc_get_server(struct event_base *base, char *name,
     }
 
     memset(server_path, 0, sizeof(server_path));
-    sprintf(server_path, "%s%s", IPC_SERVER_SOCK_PATH_PREFIX, name);
+    sprintf(server_path, "%s%s", af_ipc_server_sock_path_prefix, name);
 
     remote.sun_family = AF_UNIX;
     strncpy(remote.sun_path, server_path, sizeof(remote.sun_path)-1);

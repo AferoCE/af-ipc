@@ -76,8 +76,10 @@
 /*
  * Common constants
  */
-#define IPC_SERVER_SOCK_PATH_PREFIX    "/var/run/"
-#define AF_IPC_MAX_MSGLEN               512
+#define IPC_SERVER_DEFAULT_SOCK_PATH_PREFIX     "/var/run/"
+#define AF_IPC_MAX_MSGLEN                       512
+
+extern const char *af_ipc_server_sock_path_prefix;
 
 /**************
  * IPC MSG
@@ -140,6 +142,7 @@ typedef struct af_ipc_req_control_struct {
     pthread_mutex_t mutex;
 } af_ipc_req_control_t;
 
+void af_ipc_set_server_sock_path_prefix(const char *prefix);
 int af_ipc_util_init_requests(af_ipc_req_control_t *req_control);
 void af_ipc_util_shutdown_requests(af_ipc_req_control_t *req_control);
 int af_ipc_send(int fd, af_ipc_req_control_t *req_control, struct event_base *event_base,
@@ -147,6 +150,6 @@ int af_ipc_send(int fd, af_ipc_req_control_t *req_control, struct event_base *ev
                 af_ipc_receive_callback_t callback, void *context, int timeoutMs, char *name);
 void af_ipc_handle_receive_message(int fd, uint8_t *buf, int len,
                                    uint16_t clientId, af_ipc_req_control_t *req_control,
-                                   af_ipc_receive_callback_t receiveCallback, 
+                                   af_ipc_receive_callback_t receiveCallback,
 								   void *context);
 #endif //AF_IPC_COMMON_H
