@@ -140,6 +140,15 @@ int af_ipcs_send_request(af_ipcs_server_t *server, uint16_t clientId,
                          uint8_t *txBuffer, int txBufferSize,
                          af_ipc_receive_callback_t callback, void *context,
                          int timeoutMs);
+
+/*
+ * Disconnect a client, if they're still currently connected.
+ *
+ * server - pointer to server object
+ * clientId - ID of client to disconnect
+ */
+int af_ipcs_disconnect_client(af_ipcs_server_t *server, uint16_t clientId);
+
 /*
  * af_ipcs_shutdown -- shutdown the server
  *

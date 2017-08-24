@@ -113,6 +113,28 @@ af_ipcs_reset_client(af_ipcs_server_t *s, af_ipcs_client_t  *client)
     return (-1);
 }
 
+static void
+af_ipcs_close_client(af_ipcs_client_t *client)
+{
+    if (!client || !client->server) return;
+
+    // Call the close callback
+    if (client->server->closeCallback) {
+        client->server->closeCallback(client->clientContext);
+    }
+    // Reset the client settings to mark it as free
+    af_ipcs_reset_client(client->server, client);
+
+    //semaphore/mutex
+    pthread_mutex_lock(&client->server->clnt_mutex);
+    client->server->numClients--;
+    pthread_mutex_unlock(&client->server->clnt_mutex);
+    // end mutex
+
+    close(client->client_fd);
+}
+
+
 /*
  * Internal function to 'add' an connected client
  */
@@ -306,6 +328,21 @@ af_ipcs_send_request(af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuffer, 
 }
 
 /*
+ * Disconnect a client, if they're still currently connected.
+ *
+ * server - pointer to server object
+ * clientId - ID of client to disconnect
+ */
+int
+af_ipcs_disconnect_client(af_ipcs_server_t *server, uint16_t clientId)
+{
+    af_ipcs_client_t *client = af_ipcs_find_client_by_cid(server, clientId);
+    if (client == NULL) return -1;
+    af_ipcs_close_client(client);
+    return 0;
+}
+
+/*
  * Callback function to receive data from client socket
  */
 void
@@ -333,20 +370,7 @@ af_ipcs_server_on_recv(evutil_socket_t fd, short events, void *arg)
                     AFLOG_ERR("receive_error:fd=%d,errno=%d", fd, errno);
                 }
 
-                // Call the close callback
-                if (client->server->closeCallback) {
-                    client->server->closeCallback(client->clientContext);
-                }
-                // Reset the client settings to mark it as free
-                af_ipcs_reset_client(client->server, client);
-
-                //semaphore/mutex
-                pthread_mutex_lock(&client->server->clnt_mutex);
-                client->server->numClients--;
-                pthread_mutex_unlock(&client->server->clnt_mutex);
-                // end mutex
-
-                close (fd);
+                af_ipcs_close_client(client);
                 break;
             }
             else {  // we got a message from the client
