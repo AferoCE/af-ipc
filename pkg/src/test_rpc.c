@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdio.h>
 #include "af_rpc.h"
 
@@ -39,12 +40,12 @@ int main(int argc, char *argv[])
     printf("i is_uint_type=%d\n", AF_RPC_TYPE_IS_UNSIGNED_INT(AF_RPC_TYPE_INT8));
 
     af_rpc_param_t params8[] = {
-        { (void *)(int32_t)a8, AF_RPC_TYPE_INT8 },
-        { (void *)(int32_t)b8, AF_RPC_TYPE_INT8 },
-        { (void *)(int32_t)c8, AF_RPC_TYPE_INT8 },
-        { (void *)(int32_t)d8, AF_RPC_TYPE_INT8 },
-        { (void *)(uint32_t)ua8, AF_RPC_TYPE_UINT8 },
-        { (void *)(uint32_t)ub8, AF_RPC_TYPE_UINT8 }
+        { (void *)(ptrdiff_t)a8, AF_RPC_TYPE_INT8 },
+        { (void *)(ptrdiff_t)b8, AF_RPC_TYPE_INT8 },
+        { (void *)(ptrdiff_t)c8, AF_RPC_TYPE_INT8 },
+        { (void *)(ptrdiff_t)d8, AF_RPC_TYPE_INT8 },
+        { (void *)(ptrdiff_t)ua8, AF_RPC_TYPE_UINT8 },
+        { (void *)(ptrdiff_t)ub8, AF_RPC_TYPE_UINT8 }
     };
 
     size = create_and_print(sBuffer, sizeof(sBuffer), params8, ARRAY_SIZE(params8));
@@ -65,19 +66,19 @@ int main(int argc, char *argv[])
     nr = af_rpc_get_params_from_buffer(paramsr8, ARRAY_SIZE(paramsr8), sBuffer, size, 0);
     printf ("nr=%d\n", nr);
     for (i = 0; i < 4; i++) {
-        printf ("paramsr8[%d] = %d\n", i, (int32_t)paramsr8[i].base);
+        printf ("paramsr8[%d] = %d\n", i, (int32_t)(ptrdiff_t)paramsr8[i].base);
     }
     for (i = 4; i < 6; i++) {
-        printf ("paramsr8[%d] = %u\n", i, (uint32_t)paramsr8[i].base);
+        printf ("paramsr8[%d] = %u\n", i, (uint32_t)(ptrdiff_t)paramsr8[i].base);
     }
 
     nr = af_rpc_get_params_from_buffer(paramsr, ARRAY_SIZE(paramsr), sBuffer, size, 1);
     printf ("nr=%d\n", nr);
     for (i = 0; i < 4; i++) {
-        printf ("paramsr[%d] = %d type=%04x\n", i, (int32_t)paramsr[i].base, paramsr[i].type);
+        printf ("paramsr[%d] = %d type=%04x\n", i, (int32_t)(ptrdiff_t)paramsr[i].base, paramsr[i].type);
     }
     for (i = 4; i < 6; i++) {
-        printf ("paramsr[%d] = %u type=%04x\n", i, (uint32_t)paramsr[i].base, paramsr[i].type);
+        printf ("paramsr[%d] = %u type=%04x\n", i, (uint32_t)(ptrdiff_t)paramsr[i].base, paramsr[i].type);
     }
 
     af_rpc_init_buffer(sBuffer, sizeof(sBuffer));
@@ -107,12 +108,12 @@ int main(int argc, char *argv[])
     printf ("pos=%d ub8=%d\n", pos, ux8);
 
     af_rpc_param_t params16[] = {
-        { (void *)(int32_t)a16, AF_RPC_TYPE_INT16 },
-        { (void *)(int32_t)b16, AF_RPC_TYPE_INT16 },
-        { (void *)(int32_t)c16, AF_RPC_TYPE_INT16 },
-        { (void *)(int32_t)d16, AF_RPC_TYPE_INT16 },
-        { (void *)(uint32_t)ua16, AF_RPC_TYPE_UINT16 },
-        { (void *)(uint32_t)ub16, AF_RPC_TYPE_UINT16 }
+        { (void *)(ptrdiff_t)a16, AF_RPC_TYPE_INT16 },
+        { (void *)(ptrdiff_t)b16, AF_RPC_TYPE_INT16 },
+        { (void *)(ptrdiff_t)c16, AF_RPC_TYPE_INT16 },
+        { (void *)(ptrdiff_t)d16, AF_RPC_TYPE_INT16 },
+        { (void *)(ptrdiff_t)ua16, AF_RPC_TYPE_UINT16 },
+        { (void *)(ptrdiff_t)ub16, AF_RPC_TYPE_UINT16 }
     };
 
     size = create_and_print(sBuffer, sizeof(sBuffer), params16, ARRAY_SIZE(params16));
@@ -129,19 +130,19 @@ int main(int argc, char *argv[])
     nr = af_rpc_get_params_from_buffer(paramsr16, ARRAY_SIZE(paramsr16), sBuffer, size, 0);
     printf ("nr=%d\n", nr);
     for (i = 0; i < 4; i++) {
-        printf ("paramsr16[%d] = %d\n", i, (int32_t)paramsr16[i].base);
+        printf ("paramsr16[%d] = %d\n", i, (int32_t)(ptrdiff_t)paramsr16[i].base);
     }
     for (i = 4; i < 6; i++) {
-        printf ("paramsr16[%d] = %u\n", i, (uint32_t)paramsr16[i].base);
+        printf ("paramsr16[%d] = %u\n", i, (uint32_t)(ptrdiff_t)paramsr16[i].base);
     }
 
     nr = af_rpc_get_params_from_buffer(paramsr, ARRAY_SIZE(paramsr), sBuffer, size, 1);
     printf ("nr=%d\n", nr);
     for (i = 0; i < 4; i++) {
-        printf ("paramsr[%d] = %d type=%04x\n", i, (int32_t)paramsr[i].base, paramsr[i].type);
+        printf ("paramsr[%d] = %d type=%04x\n", i, (int32_t)(ptrdiff_t)paramsr[i].base, paramsr[i].type);
     }
     for (i = 4; i < 6; i++) {
-        printf ("paramsr[%d] = %u type=%04x\n", i, (uint32_t)paramsr[i].base, paramsr[i].type);
+        printf ("paramsr[%d] = %u type=%04x\n", i, (uint32_t)(ptrdiff_t)paramsr[i].base, paramsr[i].type);
     }
 
     af_rpc_init_buffer(sBuffer, sizeof(sBuffer));
@@ -169,12 +170,12 @@ int main(int argc, char *argv[])
     printf ("pos=%d ub16=%d\n", pos, ux16);
 
     af_rpc_param_t params32[] = {
-        { (void *)(int32_t)a32, AF_RPC_TYPE_INT32 },
-        { (void *)(int32_t)b32, AF_RPC_TYPE_INT32 },
-        { (void *)(int32_t)c32, AF_RPC_TYPE_INT32 },
-        { (void *)(int32_t)d32, AF_RPC_TYPE_INT32 },
-        { (void *)(uint32_t)ua32, AF_RPC_TYPE_UINT32 },
-        { (void *)(uint32_t)ub32, AF_RPC_TYPE_UINT32 }
+        { (void *)(ptrdiff_t)a32, AF_RPC_TYPE_INT32 },
+        { (void *)(ptrdiff_t)b32, AF_RPC_TYPE_INT32 },
+        { (void *)(ptrdiff_t)c32, AF_RPC_TYPE_INT32 },
+        { (void *)(ptrdiff_t)d32, AF_RPC_TYPE_INT32 },
+        { (void *)(ptrdiff_t)ua32, AF_RPC_TYPE_UINT32 },
+        { (void *)(ptrdiff_t)ub32, AF_RPC_TYPE_UINT32 }
     };
 
     size = create_and_print(sBuffer, sizeof(sBuffer), params32, ARRAY_SIZE(params32));
@@ -191,19 +192,19 @@ int main(int argc, char *argv[])
     nr = af_rpc_get_params_from_buffer(paramsr32, ARRAY_SIZE(paramsr32), sBuffer, size, 0);
     printf ("nr=%d\n", nr);
     for (i = 0; i < 4; i++) {
-        printf ("paramsr32[%d] = %d\n", i, (int32_t)paramsr32[i].base);
+        printf ("paramsr32[%d] = %d\n", i, (int32_t)(ptrdiff_t)paramsr32[i].base);
     }
     for (i = 4; i < 6; i++) {
-        printf ("paramsr32[%d] = %u\n", i, (uint32_t)paramsr32[i].base);
+        printf ("paramsr32[%d] = %u\n", i, (uint32_t)(ptrdiff_t)paramsr32[i].base);
     }
 
     nr = af_rpc_get_params_from_buffer(paramsr, ARRAY_SIZE(paramsr), sBuffer, size, 1);
     printf ("nr=%d\n", nr);
     for (i = 0; i < 4; i++) {
-        printf ("paramsr[%d] = %d type=%04x\n", i, (int32_t)paramsr[i].base, paramsr[i].type);
+        printf ("paramsr[%d] = %d type=%04x\n", i, (int32_t)(ptrdiff_t)paramsr[i].base, paramsr[i].type);
     }
     for (i = 4; i < 6; i++) {
-        printf ("paramsr[%d] = %u type=%04x\n", i, (uint32_t)paramsr[i].base, paramsr[i].type);
+        printf ("paramsr[%d] = %u type=%04x\n", i, (uint32_t)(ptrdiff_t)paramsr[i].base, paramsr[i].type);
     }
 
     af_rpc_init_buffer(sBuffer, sizeof(sBuffer));
@@ -269,7 +270,7 @@ int main(int argc, char *argv[])
 #define TEST_STRING "My test string"
 
     af_rpc_param_t params_blob[] = {
-        { (void *)(uint32_t)num, AF_RPC_TYPE_UINT8 },
+        { (void *)(ptrdiff_t)num, AF_RPC_TYPE_UINT8 },
         { blob, AF_RPC_TYPE_BLOB(sizeof(blob)) },
         { TEST_STRING, AF_RPC_TYPE_STRING(sizeof(TEST_STRING)) }
     };
@@ -284,7 +285,7 @@ int main(int argc, char *argv[])
 
     nr = af_rpc_get_params_from_buffer(params_blobr, ARRAY_SIZE(params_blobr), sBuffer, size, 0);
     printf ("nr=%d\n", nr);
-    printf ("rnum = %u\n", (uint32_t)params_blobr[0].base);
+    printf ("rnum = %u\n", (uint32_t)(ptrdiff_t)params_blobr[0].base);
     size = AF_RPC_BLOB_SIZE(params_blobr[1].type);
     for (i = 0; i < params_blobr[1].type; i++) {
         printf ((i == 0 ? "%02x" : " %02x"), ((uint8_t *)params_blobr[1].base)[i]);

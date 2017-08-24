@@ -188,12 +188,12 @@ main(int argc, const char * argv[])
                 case AF_RPC_TYPE_UINT8 :
                 case AF_RPC_TYPE_UINT16 :
                 case AF_RPC_TYPE_UINT32 :
-                    bytes = sprintf(tmp, "%u", (uint32_t)ret_params[i].base);
+                    bytes = sprintf(tmp, "%u", (uint32_t)(ptrdiff_t)ret_params[i].base);
                     break;
                 case AF_RPC_TYPE_INT8 :
                 case AF_RPC_TYPE_INT16 :
                 case AF_RPC_TYPE_INT32 :
-                    bytes = sprintf(tmp, "%d", (int32_t)ret_params[i].base);
+                    bytes = sprintf(tmp, "%d", (int32_t)(ptrdiff_t)ret_params[i].base);
                     break;
                 default :
                     fprintf(stderr, "illegal type %04x for parameter %d\n", type, i);

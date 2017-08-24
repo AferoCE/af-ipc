@@ -84,7 +84,7 @@ subsys_test1_receive(int        status,
             for (i = 0; i < MAX_REQUESTS; i++) {
                 message[0] = SERVER_COMMANDS_TO_CLIENT;
                 message[1] = (uint8_t)i;
-                int status = af_ipcs_send_request(my_server, clientId, message, 2, subsys_test1_receive, (void *)i, 2000);
+                int status = af_ipcs_send_request(my_server, clientId, message, 2, subsys_test1_receive, (void *)(ptrdiff_t)i, 2000);
                 if (status != 0) {
                     s_failures++;
                     AFLOG_ERR("client_test_servercmds:status=%d", status);
@@ -113,10 +113,10 @@ subsys_test1_receive(int        status,
         case CLIENT_REPLIES :
         {
             if (rxBufferSize > 1) {
-                if (rxBuffer[1] == (int)clientContext) {
-                    AFLOG_INFO("client reply for message %d is okay", (int)clientContext);
+                if (rxBuffer[1] == (int)(ptrdiff_t)clientContext) {
+                    AFLOG_INFO("client reply for message %d is okay", (int)(ptrdiff_t)clientContext);
                 } else {
-                    AFLOG_ERR("client reply %d does not match expected %d", rxBuffer[1], (int)clientContext);
+                    AFLOG_ERR("client reply %d does not match expected %d", rxBuffer[1], (int)(ptrdiff_t)clientContext);
                     s_failures++;
                 }
             } else {

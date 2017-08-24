@@ -62,7 +62,7 @@ test_receive (int status, uint32_t seqNum,
             for (i = 0; i < MAX_REQUESTS; i++) {
                 message[0] = CLIENT_COMMANDS;
                 message[1] = i;
-                int status = af_ipcc_send_request(my_server, message, 2, test_receive, (void *)i, 2000);
+                int status = af_ipcc_send_request(my_server, message, 2, test_receive, (void *)(ptrdiff_t)i, 2000);
                 if (status != 0) {
                     AFLOG_ERR("broadcast_to_clients:status=%d:send failed", status);
                     s_failures++;
@@ -98,8 +98,8 @@ test_receive (int status, uint32_t seqNum,
 
         case SERVER_REPLIES :
         {
-            if (rxBuf[1] != (uint8_t)(uint32_t)context) {
-                AFLOG_ERR("server_replies expected %d got %d", (uint8_t)(uint32_t)context, rxBuf[1]);
+            if (rxBuf[1] != (uint8_t)(ptrdiff_t)context) {
+                AFLOG_ERR("server_replies expected %d got %d", (uint8_t)(ptrdiff_t)context, rxBuf[1]);
                 s_failures++;
             } else {
                 AFLOG_INFO("successfully received %d", rxBuf[1]);
