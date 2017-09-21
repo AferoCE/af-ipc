@@ -77,7 +77,7 @@
  * Common constants
  */
 #define IPC_SERVER_DEFAULT_SOCK_PATH_PREFIX     "/var/run/"
-#define AF_IPC_MAX_MSGLEN                       512
+#define AF_IPC_MAX_MSGLEN                       4096
 
 extern const char *af_ipc_server_sock_path_prefix;
 
