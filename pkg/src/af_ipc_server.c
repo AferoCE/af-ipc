@@ -122,7 +122,8 @@ af_ipcs_close_client(af_ipcs_client_t *client)
     if (client->server->closeCallback) {
         client->server->closeCallback(client->clientContext);
     }
-    // Reset the client settings to mark it as free
+    // Reset the client settings to mark it as free. Save the fd so we can close it later.
+    int client_fd = client->client_fd;
     af_ipcs_reset_client(client->server, client);
 
     //semaphore/mutex
@@ -131,7 +132,7 @@ af_ipcs_close_client(af_ipcs_client_t *client)
     pthread_mutex_unlock(&client->server->clnt_mutex);
     // end mutex
 
-    close(client->client_fd);
+    close(client_fd);
 }
 
 
