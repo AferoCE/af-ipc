@@ -6,6 +6,7 @@ include_HEADERS = af_ipc_common.h af_ipc_client.h af_ipc_server.h af_rpc.h
 # ipc library
 LIBPATH=$(CURDIR)/.libs
 libaf_ipc_la_LDFLAGS = -module -Wall -ggdb3 -std=gnu99 -shared -fPIC -soname, libaf_ipc.so.0 -laf_util
+libaf_ipc_la_CFLAGS = -Wall -std=gnu99 -ggdb3
 libaf_ipc_la_SOURCES = af_ipc_server.c af_ipc_client.c af_ipc_common.c af_rpc.c
 
 # serialize library
@@ -34,3 +35,8 @@ test_rpc_CFLAGS = -Wall -std=gnu99
 ipc_wait_SOURCES = ipc_wait.c
 ipc_wait_LDADD = -L. -lpthread -levent -laf_ipc -laf_util
 ipc_wait_CFLAGS = -Wall -std=gnu99
+
+.PHONY : build_info.h
+$(libaf_ipc_la_SOURCES) : build_info.h
+build_info.h :
+	$(srcdir)/make-build-info.sh $(srcdir)

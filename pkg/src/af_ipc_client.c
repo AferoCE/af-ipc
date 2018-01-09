@@ -28,6 +28,9 @@
 #include "af_ipc_client.h"
 
 
+extern const char REVISION[];
+extern const char BUILD_DATE[];
+
 /* function defintion */
 static void
 af_ipcc_client_on_recv(int listenfd, short evtype, void *arg);
@@ -45,6 +48,9 @@ af_ipcc_server_t *af_ipcc_get_server(struct event_base *base, char *name,
     int             addrlen;
     struct          sockaddr_un   remote;
     char            server_path[128];
+
+
+    AFLOG_INFO("start_ipc_client:revision=%s,build_date=%s", REVISION, BUILD_DATE);
 
     if (base == NULL) {
         AFLOG_ERR("ipc_client_get_server:base=NULL:bad event base");

@@ -22,7 +22,7 @@
 #include <event2/event.h>
 #include <event2/thread.h>
 #include <assert.h>
-
+#include "build_info.h"
 #include "af_log.h"
 #include "af_ipc_server.h"
 
@@ -462,6 +462,8 @@ af_ipcs_init_server_DBs(af_ipcs_server_t *s)
     return;
 }
 
+extern const char REVISION[];
+extern const char BUILD_DATE[];
 
 /*
  * Initialize the IPC Layer Infrastructure for the Server
@@ -481,6 +483,8 @@ af_ipcs_init(struct event_base *base,
     int    tmp_reuse = 1;
     int    len;
     af_ipcs_server_t *s;
+
+    AFLOG_INFO("start_ipc_server:revision=%s,build_date=%s", REVISION, BUILD_DATE);
 
     if (base == NULL) {
         AFLOG_ERR("ipc_server_init_event_base:base=NULL:event_base is invalid");
