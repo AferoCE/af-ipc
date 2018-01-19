@@ -11,8 +11,18 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include "af_ipc_common.h"
+#include "af_ipc_prv.h"
 #include "af_log.h"
 
+uint16_t af_ipc_get_client_id_from_seq_num(uint32_t seqNum)
+{
+    return AF_IPC_GET_CLIENT_ID(seqNum);
+}
+
+int af_ipc_seq_num_is_request(uint32_t seqNum)
+{
+    return AF_IPC_GET_SEQ_ID(seqNum) != 0;
+}
 
 const char *af_ipc_server_sock_path_prefix = IPC_SERVER_DEFAULT_SOCK_PATH_PREFIX;
 

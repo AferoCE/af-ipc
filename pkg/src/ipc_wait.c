@@ -35,8 +35,11 @@ uint32_t g_debugLevel = LOG_DEBUG4;
 /* the server name */
 static const char *sName   = NULL;
 
+/* the event base */
+struct event_base   *s_base = NULL;
+
 /* the IPC client server control block */
-static af_ipcc_server_t     *server;
+static af_ipcc_server_t     *s_server = NULL;
 
 /* Storage for input parameters, and output data */
 uint8_t        dataReceived = 0;
@@ -68,7 +71,7 @@ handle_receive(int err, uint32_t seqNum, uint8_t *data, int dataLen, void *conte
         outBufferSize = dataLen;
     }
 
-    event_base_loopexit(server->event_base, &timeout_ms);
+    event_base_loopexit(s_base, &timeout_ms);
     return;
 }
 
@@ -80,7 +83,7 @@ handle_timeout(evutil_socket_t fd, short what, void *arg)
     struct timeval  tmout_ms = {0, 100};
 
     /* just exist the eventloop */
-    event_base_loopexit(server->event_base, &tmout_ms);
+    event_base_loopexit(s_base, &tmout_ms);
 }
 
 /* main for ipc_wait
@@ -89,7 +92,6 @@ int
 main(int argc, const char * argv[])
 {
     int                 i;
-    struct event_base   *client_evbase;
     af_rpc_param_t      ret_params[IPC_WAIT_MAX_PARAMS];
     char                ret_string[256];
     struct timeval      timeout_val;
@@ -125,29 +127,28 @@ main(int argc, const char * argv[])
     timeout_val.tv_sec = timeout;
     timeout_val.tv_usec = 0;
 
-    client_evbase = event_base_new();
-    if (client_evbase == NULL) {
+    s_base = event_base_new();
+    if (s_base == NULL) {
         fprintf(stderr, "Exit.  Unable to create event_base\n");
 
         return retVal;
     }
 
-    server = af_ipcc_get_server (client_evbase, (char *)sName,
+    s_server = af_ipcc_get_server (s_base, (char *)sName,
                                  handle_receive, NULL, NULL);
-    if (server == NULL) {
-        event_base_free(client_evbase);
+    if (s_server == NULL) {
+        event_base_free(s_base);
 
         fprintf(stderr, "Unable to connect to server %s\n", sName);
         return retVal;
     }
 
     /* Create an event in the rare case where server never talked to us */
-    tm_event = event_new(client_evbase, server->fd,
-                         EV_TIMEOUT, handle_timeout, NULL);
+    tm_event = evtimer_new(s_base, handle_timeout, NULL);
     event_add(tm_event, &timeout_val);
 
     /* Activate the eventloop */
-    event_base_dispatch(client_evbase);
+    event_base_dispatch(s_base);
 
     /* The event loop exits as the reply is received */
     if (dataReceived == 0) {
@@ -241,11 +242,17 @@ main(int argc, const char * argv[])
     retVal = 0;
 
 exit:
-    /* Shutdown the fd to the server */
-    shutdown(server->fd, SHUT_RDWR);
+    if (s_server) {
+        af_ipcc_shutdown(s_server);
+    }
 
-    af_ipcc_shutdown(server);
-    event_free(tm_event);
-    event_base_free(client_evbase);
+    if (tm_event) {
+        event_free(tm_event);
+    }
+
+    if (s_base) {
+        event_base_free(s_base);
+    }
+
     return retVal;
 }

@@ -21,11 +21,57 @@
 #include <syslog.h>
 #include <event2/event.h>
 #include <event2/thread.h>
-#include <assert.h>
 #include "build_info.h"
+
 #include "af_log.h"
 #include "af_ipc_server.h"
+#include "af_ipc_prv.h"
 
+/*
+ * This structure is used by the server to identify the number
+ * clients (i.e the daemon processes) that server wants to
+ * communicate with.
+ *
+ * client_fd - the socket of this client (e.g freed)
+ * cid             - the client ID as assigned by the server
+ * seqNum          - the sequence number of the next command sent from server to client
+ * recv_event      - libevent2 event used to watch client socket
+ * req_control     - database of server requests
+ * clientContext   - the context info to pass into the client callback
+ *                   function.
+ */
+typedef struct af_ipcs_client_struct {
+    int                     client_fd;
+    uint16_t                cid;    // client_id
+    uint16_t                seqNum; // server to client sequence number
+    struct event            *recv_event;
+    struct af_ipcs_server_struct *server;
+    af_ipc_req_control_t    req_control;
+    void                    *clientContext;
+} af_ipcs_client_t;
+
+#define AF_IPCS_MAX_CLIENTS    4
+
+struct af_ipcs_server_struct {
+    int          server_fd;
+    struct       event_base *base;
+    struct event *server_listener_event;
+
+    pthread_mutex_t clnt_mutex; /* serialize access to clients */
+    int          numClients;
+    struct af_ipcs_client_struct clients[AF_IPCS_MAX_CLIENTS];
+    int          lastCid;
+
+    /* callback func when the server accepts a socket
+     */
+    af_ipcs_accept_callback_t acceptCallback;
+    void         *acceptContext;
+    af_ipc_receive_callback_t receiveCallback;
+    af_ipcs_close_callback_t closeCallback;
+};
+
+#define AF_IPCS_NOT_INUSE      (-1)
+#define AF_IPCS_CID_NONE       (0)
 
 #define IPC_SERVER_BACKLOG_QLEN  16
 

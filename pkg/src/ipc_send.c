@@ -37,7 +37,7 @@ uint32_t g_debugLevel = LOG_DEBUG4;
 static const char *name   = NULL;
 
 /* the IPC client server control block */
-static af_ipcc_server_t     *server;
+static af_ipcc_server_t     *s_server;
 
 /* Storage for input parameters, and output data */
 static af_rpc_param_t in_params[IPC_SEND_MAX_PARAMS];
@@ -47,6 +47,7 @@ static int            outBufferSize = 0;
 static uint8_t outBuffer[IPC_SEND_INSTR_MAX_LEN];
 static uint8_t txBuffer[IPC_SEND_INSTR_MAX_LEN];
 
+static struct event_base *s_base = NULL;
 
 /* Usage info for the scripting tool */
 static
@@ -368,7 +369,7 @@ ipc_send_rx_callback(int err, uint32_t seqNum, uint8_t *data, int dataLen, void 
         outBufferSize = dataLen;
     }
 
-    event_base_loopexit(server->event_base, &timeout_ms);
+    event_base_loopexit(s_base, &timeout_ms);
     return;
 }
 
@@ -380,7 +381,7 @@ ipc_send_tmout_callback(evutil_socket_t fd, short what, void *arg)
     struct timeval  tmout_ms = {0, 100};
 
     /* just exist the eventloop */
-    event_base_loopexit(server->event_base, &tmout_ms);
+    event_base_loopexit(s_base, &tmout_ms);
 }
 
 
@@ -411,7 +412,7 @@ ipc_send_wrapper(evutil_socket_t fd, short what, void *arg)
     }
 
     if (size > 0) {
-        af_ipcc_send_request(server, txBuffer, size, ipc_send_rx_callback, NULL, 3000);
+        af_ipcc_send_request(s_server, txBuffer, size, ipc_send_rx_callback, NULL, 3000);
     } else {
         AFLOG_ERR("ipc_send_wrapper:send_fail:ret=%d", size);
     }
@@ -440,12 +441,11 @@ dealloc_params()
 int main(int argc, const char * argv[])
 {
     int                 i;
-    struct event_base   *client_evbase;
-    struct timeval      send_cmd_in_ms_time={0,200};
+    struct timeval      send_cmd_in_ms_time = { 0, 200000 };
     struct event        *test_event = NULL;
     af_rpc_param_t      ret_params[IPC_SEND_MAX_PARAMS];
     char                ret_string[256];
-    struct timeval      tmout_ms = {5, 500};
+    struct timeval      tmout_ms = { 5, 500000 };
     struct event        *tm_event = NULL;
     int                 retVal = 1;
 
@@ -464,36 +464,33 @@ int main(int argc, const char * argv[])
         return retVal;
     }
 
-    client_evbase = event_base_new();
-    if (client_evbase == NULL) {
+    s_base = event_base_new();
+    if (s_base == NULL) {
         fprintf(stderr, "Exit.  Unable to create event_base\n");
         dealloc_params();
 
         return retVal;
     }
 
-    server = af_ipcc_get_server (client_evbase, (char *)name,
+    s_server = af_ipcc_get_server (s_base, (char *)name,
                                  NULL, NULL, NULL);
-    if (server == NULL) {
-        event_base_free(client_evbase);
+    if (s_server == NULL) {
+        event_base_free(s_base);
         dealloc_params();
 
         fprintf(stderr, "Unable to connect to server %s\n", name);
         return retVal;
     }
 
-    /* Create an event to send to the command to the server */
-    test_event = event_new(client_evbase, server->fd,
-                           EV_TIMEOUT, ipc_send_wrapper, NULL);
+    test_event = evtimer_new(s_base, ipc_send_wrapper, NULL);
     event_add(test_event, &send_cmd_in_ms_time);
 
     /* Create an event in the rare case where server never talked to us */
-    tm_event = event_new(client_evbase, server->fd,
-                         EV_TIMEOUT, ipc_send_tmout_callback, NULL);
+    tm_event = evtimer_new(s_base, ipc_send_tmout_callback, NULL);
     event_add(tm_event, &tmout_ms);
 
     /* Activate the eventloop */
-    event_base_dispatch(client_evbase);
+    event_base_dispatch(s_base);
 
     /* The event loop exits as the reply is received */
     if (dataReceived == 0) {
@@ -586,12 +583,23 @@ int main(int argc, const char * argv[])
 
 exit:
     /* Shutdown the fd to the server */
-    shutdown(server->fd, SHUT_RDWR);
-
     dealloc_params();
-    af_ipcc_shutdown(server);
-    event_free(test_event);
-    event_free(tm_event);
-    event_base_free(client_evbase);
+
+    if (s_server) {
+        af_ipcc_shutdown(s_server);
+    }
+
+    if (test_event) {
+        event_free(test_event);
+    }
+
+    if (tm_event) {
+        event_free(tm_event);
+    }
+
+    if (s_base) {
+        event_base_free(s_base);
+    }
+
     return retVal;
 }

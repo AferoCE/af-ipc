@@ -26,7 +26,24 @@
 
 #include "af_log.h"
 #include "af_ipc_client.h"
+#include "af_ipc_prv.h"
 
+struct af_ipcc_server_struct {
+    int                   fd;         // fd to 'remote server'
+    struct event_base     *event_base;
+
+    /* pending request DB */
+    pthread_mutex_t       req_mutex;  // serialize access to clients
+    uint16_t              lastSeqNum; // 16 bits; zero not allowed except on initialization
+    uint16_t              pad;
+    af_ipc_req_control_t  req_control;
+
+    /* callback functions */
+    af_ipc_receive_callback_t receiveCallback;
+    af_ipcc_close_callback_t closeCallback;
+    void *receiveContext;
+    struct event *event;              // receive event
+};
 
 extern const char REVISION[];
 extern const char BUILD_DATE[];
@@ -295,7 +312,6 @@ af_ipcc_send_unsolicited (af_ipcc_server_t *server,
 void af_ipcc_shutdown(af_ipcc_server_t *s)
 {
     if (s) {
-
         /* free the persist event for the read */
         if (s->event) {
             event_free(s->event);
@@ -305,6 +321,7 @@ void af_ipcc_shutdown(af_ipcc_server_t *s)
         /* close the server socket and free request resources */
         if (s->fd != -1) {
             af_ipc_util_shutdown_requests(&s->req_control);
+            shutdown(s->fd, SHUT_RDWR);
             close(s->fd);
             s->fd = -1;
         }

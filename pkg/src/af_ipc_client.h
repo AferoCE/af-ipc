@@ -9,33 +9,14 @@
 #ifndef __AF_IPC_CLIENT_H__
 #define __AF_IPC_CLIENT_H__
 
-#include <event2/event.h>
-#include <stdint.h>
-
 #include "af_ipc_common.h"
 
 typedef void (*af_ipcc_close_callback_t) (void *receiveContext);
 
 /*
- * Data structure representing a 'server'
+ * Opaque type representing a server
  */
-typedef struct af_ipcc_server_struct {
-    int                   fd;         // fd to 'remote server'
-    struct event_base     *event_base;
-
-    /* pending request DB */
-    pthread_mutex_t       req_mutex;  // serialize access to clients
-    uint16_t              lastSeqNum; // 16 bits; zero not allowed except on initialization
-    uint16_t              pad;
-    af_ipc_req_control_t  req_control;
-
-    /* callback functions */
-    af_ipc_receive_callback_t receiveCallback;
-    af_ipcc_close_callback_t closeCallback;
-    void *receiveContext;
-    struct event *event;              // receive event
-} af_ipcc_server_t;
-
+typedef struct af_ipcc_server_struct af_ipcc_server_t;
 
 /*
  * af_ipcc_get_server -- connects to a server

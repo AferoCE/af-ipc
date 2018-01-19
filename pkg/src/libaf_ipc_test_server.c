@@ -18,6 +18,7 @@
 
 #include "af_log.h"
 #include "af_ipc_server.h"
+#include "af_ipc_prv.h"
 #include "libaf_ipc_test_common.h"
 
 #define   SERVER_NAME "TEST_W"
