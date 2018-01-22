@@ -44,21 +44,13 @@ af_ipc_util_find_unused_request(af_ipc_req_control_t  *req_control)
     af_ipc_request_t *retVal = NULL;
 
     if (req_control) {
-        if (req_control->freeRequests) {
-            retVal = req_control->freeRequests;
-            req_control->freeRequests = retVal->next;
+        retVal = (af_ipc_request_t *)af_mempool_alloc(req_control->reqPool);
+        if (retVal == NULL) {
+            AFLOG_ERR("af_ipc_util_find_unused_calloc::");
+        } else {
             retVal->next = req_control->pendingRequests;
             req_control->pendingRequests = retVal;
             AFLOG_DEBUG3("ipc_req_alloc_alloc_from_free_list");
-        } else {
-            retVal = (af_ipc_request_t *)calloc(1, sizeof(af_ipc_request_t));
-            if (retVal) {
-                retVal->next = req_control->pendingRequests;
-                req_control->pendingRequests = retVal;
-                AFLOG_DEBUG3("ipc_req_alloc_malloc");
-            } else {
-                AFLOG_ERR("af_ipc_util_find_unused_calloc::");
-            }
         }
     } else {
         AFLOG_ERR("af_ipc_util_find_unused_null::");
@@ -89,18 +81,14 @@ af_ipc_remove_request (af_ipc_req_control_t *req_control, uint32_t seqNum)
             } else {
                 req_control->pendingRequests = request->next;
             }
-            break;
+            af_mempool_free(request);
+            AFLOG_DEBUG3("af_ipc_remove_request:Removed pending req(seqNum=%08x)", seqNum);
+            return;
         }
         prev = request;
     }
 
-    if (request) {
-        request->next = req_control->freeRequests;
-        req_control->freeRequests = request;
-        AFLOG_DEBUG3("af_ipc_remove_request:Removed pending req(seqNum=%08x)", seqNum);
-    } else {
-        AFLOG_WARNING("remove_req:seqNum=%08x:can't find request", seqNum);
-    }
+    AFLOG_WARNING("remove_req:seqNum=%08x:can't find request", seqNum);
 
     return;
 }
@@ -121,6 +109,14 @@ af_ipc_util_init_requests(af_ipc_req_control_t *req_control)
     }
     /* clear the structure */
     memset(req_control, 0, sizeof(af_ipc_req_control_t));
+
+    /* add the mempool */
+    req_control->reqPool = af_mempool_create(AF_IPC_DEFAULT_NUM_REQS, sizeof(af_ipc_request_t), AF_MEMPOOL_FLAG_EXPAND);
+    if (req_control->reqPool == NULL) {
+        AFLOG_ERR("init_req:reqPool=NULL:");
+        errno = ENOSPC;
+        return -1;
+    }
 
     req_control->lastSeqId = 0;   /* first generated sequence number is 1 */
     ret = pthread_mutex_init(&req_control->mutex, NULL);
@@ -143,32 +139,30 @@ af_ipc_util_shutdown_requests(af_ipc_req_control_t *req_control)
     }
 
     // *** mutex lock ***
-    pthread_mutex_lock(&req_control->mutex);
+    if (req_control->mutexCreated) {
+        pthread_mutex_lock(&req_control->mutex);
+    }
 
-    /* free pending requests and any remaining timeout events */
-    af_ipc_request_t *req = req_control->pendingRequests;
-    while (req) {
-        af_ipc_request_t *next = req->next;
+    /* free any remaining timeout events */
+    af_ipc_request_t *req;
+    for (req = req_control->pendingRequests; req; req = req->next) {
         if (req->event) {
             event_del(req->event);
             event_free(req->event);
             req->event = NULL;
         }
-        free(req);
-        req = next;
+    }
+    req_control->pendingRequests = NULL;
+
+    if (req_control->reqPool) {
+        /* this frees all of the reqs */
+        af_mempool_destroy(req_control->reqPool);
     }
 
-    req = req_control->freeRequests;
-    while (req) {
-        af_ipc_request_t *next = req->next;
-        free(req);
-        req = next;
-    }
-
-    pthread_mutex_unlock(&req_control->mutex);
     // *** end mutex lock ***
-
     if (req_control->mutexCreated) {
+        pthread_mutex_unlock(&req_control->mutex);
+
         pthread_mutex_destroy(&req_control->mutex);
         req_control->mutexCreated = 0;
     }

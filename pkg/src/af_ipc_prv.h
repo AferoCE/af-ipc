@@ -12,6 +12,7 @@
 
 #include <event2/event.h>
 #include <sys/socket.h>
+#include "af_mempool.h"
 
 #define STRINGTIFY(str) #str
 
@@ -102,6 +103,7 @@ typedef struct af_ipc_msghdr {
 #define AF_IPC_SEQNUM_IS_NEW_REQUEST(seqNum) (((seqNum) & AF_IPC_SEQNUM_NEW_REQUEST_MASK) != 0)
 #define AF_IPC_BUILD_SEQNUM(clientId,seqId) (((clientId)<<16)|(seqId))
 
+#define AF_IPC_DEFAULT_NUM_REQS 4
 
 /*
  * Data structure used to track a pending request
@@ -124,7 +126,7 @@ typedef struct af_ipc_req_control_struct {
     uint8_t mutexCreated;
     uint8_t pad;
     struct af_ipc_request_struct *pendingRequests;
-    struct af_ipc_request_struct *freeRequests;
+    af_mempool_t *reqPool;
     pthread_mutex_t mutex;
 } af_ipc_req_control_t;
 
