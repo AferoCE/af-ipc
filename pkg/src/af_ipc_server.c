@@ -71,21 +71,13 @@ struct af_ipcs_server_struct {
     af_ipcs_close_callback_t closeCallback;
 };
 
-#define AF_IPCS_NOT_INUSE      (-1)
-#define AF_IPCS_CID_NONE       (0)
-
 #define IPC_SERVER_BACKLOG_QLEN  16
 
-
-/* this might have to be in the server's db
- * - we probably want a read buffer, and send buffer?
- * */
-void af_ipcs_server_on_recv(evutil_socket_t fd, short events, void *arg);
-static af_ipcs_client_t *af_ipcs_add_client (af_ipcs_server_t *s, int  client_fd);
+static void on_recv(evutil_socket_t fd, short events, void *arg);
 
 /* generate a non-zero client ID; must be called in the client mutex */
 static uint16_t
-af_ipcs_get_next_cid(af_ipcs_server_t *s)
+get_next_cid(af_ipcs_server_t *s)
 {
     while(1) {
         s->lastCid++;
@@ -117,7 +109,7 @@ alloc_and_init_client(af_ipcs_server_t *s)
     } else {
         memset(c, 0, sizeof(af_ipcs_client_t));
 
-        c->cid = af_ipcs_get_next_cid(s);
+        c->cid = get_next_cid(s);
         if (af_ipc_util_init_requests(&c->req_control) < 0) {
             AFLOG_ERR("af_ipcs_find_unused_client_init_req::");
             af_mempool_free(c);
@@ -135,7 +127,7 @@ alloc_and_init_client(af_ipcs_server_t *s)
 
 /* find the client based on the client ID or cid */
 static af_ipcs_client_t *
-af_ipcs_find_client_by_cid(af_ipcs_server_t *s, int cid)
+find_client_by_cid(af_ipcs_server_t *s, int cid)
 {
     af_ipcs_client_t *c;
 
@@ -149,7 +141,7 @@ af_ipcs_find_client_by_cid(af_ipcs_server_t *s, int cid)
 
 
 static void
-af_ipcs_close_client(af_ipcs_client_t *client)
+close_client(af_ipcs_client_t *client)
 {
     if (!client || !client->server) return;
 
@@ -158,12 +150,14 @@ af_ipcs_close_client(af_ipcs_client_t *client)
 
     // turn off receive event
     if (client->recv_event) {
+        event_del(client->recv_event);
         event_free(client->recv_event);
     }
 
     // remove client from list of active clients
     int client_fd = client->client_fd;
 
+    pthread_mutex_lock(&client->server->clnt_mutex);
     af_ipcs_client_t *c, *last = NULL;
     for (c = client->server->clients; c; c = c->next) {
         if (client == c) {
@@ -175,6 +169,7 @@ af_ipcs_close_client(af_ipcs_client_t *client)
             break;
         }
     }
+    pthread_mutex_unlock(&client->server->clnt_mutex);
 
     // clean up the request control structure
     af_ipc_util_shutdown_requests(&client->req_control);
@@ -188,7 +183,7 @@ af_ipcs_close_client(af_ipcs_client_t *client)
     af_mempool_free(client);
 
     // close the client fd
-    close(client_fd);
+    EVUTIL_CLOSESOCKET(client_fd);
 }
 
 
@@ -196,7 +191,7 @@ af_ipcs_close_client(af_ipcs_client_t *client)
  * Internal function to add a connected client
  */
 static af_ipcs_client_t *
-af_ipcs_add_client (af_ipcs_server_t *s, int  client_fd)
+add_client (af_ipcs_server_t *s, int  client_fd)
 {
     // **********************************
     // Control the access of the client DB
@@ -206,21 +201,22 @@ af_ipcs_add_client (af_ipcs_server_t *s, int  client_fd)
 
     if (client != NULL) {
 
+        client->server = s;
         client->client_fd = client_fd;
         client->recv_event = event_new(s->base, client_fd, (EV_READ|EV_PERSIST|EV_ET),
-                                       af_ipcs_server_on_recv, (void *)client);
-        client->server = s;
+                                       on_recv, (void *)client);
 
-        /* TODO make sure we succeeded */
+        if (client->recv_event == NULL) {
+            AFLOG_ERR("add_client_recv_event::can't allocate receive event; closing");
+            close_client(client);
+        } else {
+            /* call the accept callback to inform the application of the new client */
+            if (s->acceptCallback) {
+                (s->acceptCallback)(s->acceptContext, client->cid, &client->clientContext);
+            }
 
-
-        /* call the accept callback to inform the application of the new client */
-        if (s->acceptCallback) {
-            (s->acceptCallback)(s->acceptContext, client->cid, &client->clientContext);
+            AFLOG_DEBUG1("ipc_server_connect:client_fd=%d", client_fd);
         }
-
-        AFLOG_DEBUG1("ipc_server_connect:client_fd=%d", client_fd);
-
     }
 
     pthread_mutex_unlock(&s->clnt_mutex);
@@ -251,26 +247,33 @@ af_ipcs_send_response(af_ipcs_server_t *s, uint32_t seqNum, uint8_t *txBuffer, i
         return -1;
     }
 
+    int result = -1;
+
+    pthread_mutex_lock(&s->clnt_mutex);
+
     if (seqId != 0) {
         uint16_t clientId = AF_IPC_GET_CLIENT_ID(seqNum);
-        af_ipcs_client_t *this_client = af_ipcs_find_client_by_cid(s, clientId);
 
-        if ((this_client) && (this_client->client_fd != AF_IPCS_NOT_INUSE)) {
+        af_ipcs_client_t *this_client = find_client_by_cid(s, clientId);
 
-            return af_ipc_send(this_client->client_fd, NULL, NULL,
-                               seqNum, txBuffer, txBufferSize,
-                               NULL, NULL, 0, "server");
+        if (this_client) {
+
+            result = af_ipc_send(this_client->client_fd, NULL, NULL,
+                                 seqNum, txBuffer, txBufferSize,
+                                 NULL, NULL, 0, "server");
         }
         else {
             AFLOG_ERR("ipc_server_send_resp_client_id:clientId=%d,seqNum=%x:client id not found", clientId, seqNum);
             errno = EINVAL;
-            return (-1);
         }
     } else {
         AFLOG_ERR("ipc_server_send_resp_seq_id:seqId=%d,seqNum=%x:Invalid sequence id", seqId, seqNum);
         errno = EINVAL;
-        return (-1);
     }
+
+    pthread_mutex_unlock(&s->clnt_mutex);
+
+    return result;
 }
 
 /*
@@ -293,6 +296,7 @@ af_ipcs_send_unsolicited (af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuf
         return -1;
     }
 
+    pthread_mutex_lock(&s->clnt_mutex);
     if (clientId == 0) {
         AFLOG_INFO("broadcast_message::");
         af_ipcs_client_t *c;
@@ -305,7 +309,7 @@ af_ipcs_send_unsolicited (af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuf
         }
     } else {
         /* unsolicited message to specific client */
-        af_ipcs_client_t *this_client = af_ipcs_find_client_by_cid(s, clientId);
+        af_ipcs_client_t *this_client = find_client_by_cid(s, clientId);
 
         if (this_client != NULL) {
             int fd = this_client->client_fd;
@@ -325,6 +329,7 @@ af_ipcs_send_unsolicited (af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuf
         }
     }
 
+    pthread_mutex_unlock(&s->clnt_mutex);
     return result;
 }
 
@@ -364,22 +369,28 @@ af_ipcs_send_request(af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuffer, 
         errno = EINVAL;
         return (-1);
     }
-    af_ipcs_client_t *client = af_ipcs_find_client_by_cid(s, clientId);
-    if (client == NULL) {
+
+    int result = -1;
+    pthread_mutex_lock(&s->clnt_mutex);
+
+    af_ipcs_client_t *client = find_client_by_cid(s, clientId);
+    if (client != NULL) {
+        int fd = client->client_fd;
+        if (fd >= 0) {
+            result = af_ipc_send(fd, &client->req_control, s->base,
+                                 0, txBuffer, txBufferSize,
+                                 callback, context, timeoutMs, "server");
+        } else {
+            AFLOG_ERR("ipc_server_send_req_client_fd:fd=%d:invalid client fd", fd);
+            errno = ENOENT;
+        }
+    } else {
         AFLOG_ERR("ipc_server_send_req_client_id:clientId=%d:client not found", clientId);
         errno = ENOENT;
-        return (-1);
     }
-    int fd = client->client_fd;
-    if (fd < 0) {
-        AFLOG_ERR("ipc_server_send_req_client_fd:fd=%d:invalid client fd", fd);
-        errno = ENOENT;
-        return (-1);
-    } else {
-        return af_ipc_send(fd, &client->req_control, s->base,
-                           0, txBuffer, txBufferSize,
-                           callback, context, timeoutMs, "server");
-    }
+
+    pthread_mutex_unlock (&s->clnt_mutex);
+    return result;
 }
 
 /*
@@ -391,17 +402,17 @@ af_ipcs_send_request(af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuffer, 
 int
 af_ipcs_disconnect_client(af_ipcs_server_t *server, uint16_t clientId)
 {
-    af_ipcs_client_t *client = af_ipcs_find_client_by_cid(server, clientId);
+    af_ipcs_client_t *client = find_client_by_cid(server, clientId);
     if (client == NULL) return -1;
-    af_ipcs_close_client(client);
+    close_client(client);
     return 0;
 }
 
 /*
  * Callback function to receive data from client socket
  */
-void
-af_ipcs_server_on_recv(evutil_socket_t fd, short events, void *arg)
+static void
+on_recv(evutil_socket_t fd, short events, void *arg)
 {
     af_ipcs_client_t *client = (af_ipcs_client_t *)arg;
     char    buf[AF_IPC_MAX_MSGLEN];
@@ -425,7 +436,7 @@ af_ipcs_server_on_recv(evutil_socket_t fd, short events, void *arg)
                     AFLOG_ERR("receive_error:fd=%d,errno=%d", fd, errno);
                 }
 
-                af_ipcs_close_client(client);
+                close_client(client);
                 break;
             }
             else {  // we got a message from the client
@@ -442,7 +453,7 @@ af_ipcs_server_on_recv(evutil_socket_t fd, short events, void *arg)
     }
 
     return;
-} // af_ipcs_server_on_recv
+} // on_recv
 
 
 /*
@@ -452,8 +463,8 @@ af_ipcs_server_on_recv(evutil_socket_t fd, short events, void *arg)
  *  -- need to save incoming client fd
  *  -- when to free fd_state
  */
-void
-af_ipcs_on_accept(evutil_socket_t server_fd, short event, void *arg)
+static void
+on_accept(evutil_socket_t server_fd, short event, void *arg)
 {
     int client_fd;
     af_ipcs_server_t *s = (af_ipcs_server_t *)arg;
@@ -475,7 +486,7 @@ af_ipcs_on_accept(evutil_socket_t server_fd, short event, void *arg)
             AFLOG_INFO("ipc_server_accept_again::");
         }
     } else if (client_fd > FD_SETSIZE) {
-        close(client_fd); // XXX replace all closes with EVUTIL_CLOSESOCKET */
+        EVUTIL_CLOSESOCKET(client_fd);
     } else {
         /* connect is OK, accept it -- client_fd needs to be saved */
         af_ipcs_client_t       *client = NULL;
@@ -484,10 +495,11 @@ af_ipcs_on_accept(evutil_socket_t server_fd, short event, void *arg)
         evutil_make_socket_nonblocking(client_fd);
 
         /* Initialize a read event on client_fd: associate the event with
-         * the given base, and set up the af_ipcs_server_on_recv callback to
+         * the given base, and set up the on_recv callback to
          * be invoked whenever data is available to be read on the client_fd.
          */
-        client = af_ipcs_add_client(s, client_fd);
+        client = add_client(s, client_fd);
+
         if (client) {
             AFLOG_DEBUG3("ipc_server:schedule the event on_recv for client_fd=%d, recv_event_null=%d",
                          client->client_fd, (client->recv_event==NULL));
@@ -495,28 +507,12 @@ af_ipcs_on_accept(evutil_socket_t server_fd, short event, void *arg)
         }
         else {
             AFLOG_ERR("ipc_server_add_client:client_fd=%d:add client failed", client_fd);
-            close(client_fd);
+            EVUTIL_CLOSESOCKET(client_fd);
         }
     }
 
     return;
 }
-
-#if 0
-/* Internl routine to initialize various control data structures */
-static void
-af_ipcs_init_server_DBs(af_ipcs_server_t *s)
-{
-    int i;
-
-    memset(s, 0, sizeof(af_ipcs_server_t));
-    for (i=0; i<AF_IPCS_MAX_CLIENTS; i++) {
-        af_ipcs_reset_client(s, &s->clients[i]);
-    }
-
-    return;
-}
-#endif
 
 extern const char REVISION[];
 extern const char BUILD_DATE[];
@@ -613,7 +609,7 @@ af_ipcs_init(struct event_base *base,
      * - error check
      */
     s->server_listener_event = event_new(base, s->server_fd, (EV_READ | EV_PERSIST),
-                                         af_ipcs_on_accept, s);
+                                         on_accept, s);
     if (s->server_listener_event == NULL) {
         AFLOG_ERR("ipc_server_listener_event_new::Can't create listener event");
         goto error;
@@ -666,7 +662,7 @@ af_ipcs_shutdown(af_ipcs_server_t *s)
     /* close the server socket connection */
     if (s->server_fd != -1) {
         /* shut down the listening socket */
-        close(s->server_fd);
+        EVUTIL_CLOSESOCKET(s->server_fd);
     }
 
     af_ipcs_client_t *c;
@@ -686,7 +682,7 @@ af_ipcs_shutdown(af_ipcs_server_t *s)
             s->closeCallback(c->clientContext);
         }
 
-        close(c->client_fd);
+        EVUTIL_CLOSESOCKET(c->client_fd);
     }
     af_mempool_destroy(s->clientPool);
 

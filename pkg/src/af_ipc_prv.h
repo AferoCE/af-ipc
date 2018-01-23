@@ -138,6 +138,6 @@ int af_ipc_send(int fd, af_ipc_req_control_t *req_control, struct event_base *ev
 void af_ipc_handle_receive_message(int fd, uint8_t *buf, int len,
                                    uint16_t clientId, af_ipc_req_control_t *req_control,
                                    af_ipc_receive_callback_t receiveCallback,
-								   void *context);
+                                   void *context);
 #endif // __AF_IPC_PRV_H__
 

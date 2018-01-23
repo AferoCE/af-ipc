@@ -242,7 +242,7 @@ af_ipc_send(int fd, af_ipc_req_control_t *req_control, struct event_base *base,
             af_ipc_receive_callback_t callback, void *context,
             int timeoutMs, char *name)
 {
-    int err;
+    int err = 0;
     af_ipc_request_t *req = NULL;
 
     /* using scatter/gather capability */
@@ -446,9 +446,9 @@ void af_ipc_handle_receive_message(int fd, uint8_t *buf, int len,
             if (g_debugLevel >= 2) {
                 char hexBuf[80];
                 af_util_convert_data_to_hex_with_name("buf",
-                                                buf + pos + AF_IPC_MSGHDR_LEN,
-                                                msghdr->len - AF_IPC_MSGHDR_LEN,
-                                                hexBuf, sizeof(hexBuf));
+                                                      buf + pos + AF_IPC_MSGHDR_LEN,
+                                                      msghdr->len - AF_IPC_MSGHDR_LEN,
+                                                      hexBuf, sizeof(hexBuf));
 
                 /* this is a reply to a command */
                 if (fd) {

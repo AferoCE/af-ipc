@@ -103,7 +103,7 @@ af_ipcc_server_t *af_ipcc_get_server(struct event_base *base, char *name,
     if (connect(remote_server_fd, (struct sockaddr *)&remote, addrlen) < 0) {
         AFLOG_ERR("ipc_client_connect:fd=%d,errno=%d,server_path=%s:connect failed",
                   remote_server_fd, errno, remote.sun_path);
-        close(remote_server_fd);
+        EVUTIL_CLOSESOCKET(remote_server_fd);
         return NULL;
     }
     AFLOG_DEBUG1("ipc_client_connect:fd=%d,path=%s", remote_server_fd, server_path);
@@ -119,7 +119,7 @@ af_ipcc_server_t *af_ipcc_get_server(struct event_base *base, char *name,
     if (err != 0) {
         AFLOG_ERR("ipc_client_pthread_init:err=%d:Failed to init pthread_mutex_t", err);
 
-        close(remote_server_fd);
+        EVUTIL_CLOSESOCKET(remote_server_fd);
         server->fd = -1;
         return NULL;
     }
@@ -322,7 +322,7 @@ void af_ipcc_shutdown(af_ipcc_server_t *s)
         if (s->fd != -1) {
             af_ipc_util_shutdown_requests(&s->req_control);
             shutdown(s->fd, SHUT_RDWR);
-            close(s->fd);
+            EVUTIL_CLOSESOCKET(s->fd);
             s->fd = -1;
         }
 
