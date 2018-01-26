@@ -168,6 +168,7 @@ close_client(af_ipcs_client_t *client)
             }
             break;
         }
+        last = c;
     }
     pthread_mutex_unlock(&client->server->clnt_mutex);
 

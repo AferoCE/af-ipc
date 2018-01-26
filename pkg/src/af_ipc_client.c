@@ -33,16 +33,15 @@ struct af_ipcc_server_struct {
     struct event_base     *event_base;
 
     /* pending request DB */
-    pthread_mutex_t       req_mutex;  // serialize access to clients
     uint16_t              lastSeqNum; // 16 bits; zero not allowed except on initialization
     uint16_t              pad;
-    af_ipc_req_control_t  req_control;
 
     /* callback functions */
     af_ipc_receive_callback_t receiveCallback;
     af_ipcc_close_callback_t closeCallback;
-    void *receiveContext;
-    struct event *event;              // receive event
+    void                  *receiveContext;
+    struct                event *event;  // receive event
+    af_ipc_req_control_t  req_control;
 };
 
 extern const char REVISION[];
