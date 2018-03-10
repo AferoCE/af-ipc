@@ -146,7 +146,7 @@ close_client(af_ipcs_client_t *client)
     if (!client || !client->server) return;
 
     // shutdown the client socket
-    shutdown(client->client_fd, SHUT_RDWR);
+    shutdown(client->client_fd, SHUT_RD);
 
     // turn off receive event
     if (client->recv_event) {
@@ -650,9 +650,11 @@ af_ipcs_shutdown(af_ipcs_server_t *s)
         return;
     }
 
+    AFLOG_INFO("af_ipcs_shutdown:fd=%d", s->server_fd);
+
     if (s->server_fd != -1) {
         /* shut down the listening socket */
-        shutdown(s->server_fd, SHUT_RDWR);
+        shutdown(s->server_fd, SHUT_RD);
     }
 
     /* delete the server listening event */

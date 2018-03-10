@@ -28,13 +28,16 @@
 #include "af_ipc_client.h"
 #include "af_ipc_prv.h"
 
+#define FLAGS_MARKED_FOR_SHUTDOWN (1 << 0)
+#define FLAGS_IN_RECEIVE          (1 << 1)
+
 struct af_ipcc_server_struct {
     int                   fd;         // fd to 'remote server'
     struct event_base     *event_base;
 
     /* pending request DB */
     uint16_t              lastSeqNum; // 16 bits; zero not allowed except on initialization
-    uint16_t              pad;
+    uint16_t              flags;
 
     /* callback functions */
     af_ipc_receive_callback_t receiveCallback;
@@ -78,6 +81,7 @@ af_ipcc_server_t *af_ipcc_get_server(struct event_base *base, char *name,
     server->receiveContext  = receiveContext ;
     server->receiveCallback = receiveCallback;
     server->closeCallback = closeCallback;
+    server->flags = 0;
 
     /* make the connection to the server */
     remote_server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -125,6 +129,26 @@ af_ipcc_server_t *af_ipcc_get_server(struct event_base *base, char *name,
     return server;
 }
 
+void close_and_free_server(af_ipcc_server_t *s)
+{
+    AFLOG_DEBUG2("close_and_free_server:s=%p", s);
+
+    /* free the persist event for the read */
+    if (s->event) {
+        event_del(s->event);
+        s->event = NULL;
+    }
+
+    /* close the server socket and free request resources */
+    if (s->fd != -1) {
+        af_ipc_util_shutdown_requests(&s->req_control);
+        shutdown(s->fd, SHUT_RDWR);
+        EVUTIL_CLOSESOCKET(s->fd);
+        s->fd = -1;
+    }
+
+    free(s);
+}
 
 /*
  * af_ipcc_client_on_recv
@@ -142,6 +166,12 @@ af_ipcc_client_on_recv(int listenfd, short evtype, void *arg)
     af_ipcc_server_t *server = (af_ipcc_server_t *)arg;
 	int              data_len;
 
+    if (server == NULL) {
+        AFLOG_ERR("af_ipcc_client_on_recv_server_NULL");
+        return;
+    }
+
+
     if (evtype & EV_READ) {
         while(1) {
             memset(recv_buffer, 0, sizeof(recv_buffer));
@@ -157,30 +187,30 @@ af_ipcc_client_on_recv(int listenfd, short evtype, void *arg)
                     AFLOG_INFO("ipc_client_closed:fd=%d,errno=%d:client closed", listenfd, errno);
                 }
 
-                /* turn off the event, which may cause event loop to exit */
-                if (server->event) {
-                    event_del(server->event);
-                    server->event = NULL;
-                }
-
-                /* let client know that server closed */
+                /* an error occurred; call the close callback */
                 if (server->closeCallback) {
                     (server->closeCallback)(server->receiveContext);
                 }
 
+                /* and shut down the server */
+                close_and_free_server(server);
                 break;
             } else {
+                server->flags |= FLAGS_IN_RECEIVE;
                 af_ipc_handle_receive_message(0, recv_buffer, data_len,
                                               0, &server->req_control,
                                               server->receiveCallback, server->receiveContext);
+                server->flags &= ~FLAGS_IN_RECEIVE;
+                if ((server->flags & FLAGS_MARKED_FOR_SHUTDOWN) != 0) {
+                    close_and_free_server(server);
+                    break;
+                }
             }
         }
     }
     else {
         AFLOG_WARNING("ipc_client_event:event=0x%hx:Unsupported event type received", evtype);
     }
-
-    return;
 }
 
 
@@ -299,26 +329,19 @@ af_ipcc_send_unsolicited (af_ipcc_server_t *server,
 /*
  * API to shutdown the server
  *
- * You can safely call this twice
- *
  */
+
 void af_ipcc_shutdown(af_ipcc_server_t *s)
 {
-    if (s) {
-        /* free the persist event for the read */
-        if (s->event) {
-            event_free(s->event);
-            s->event = NULL;
-        }
+    if (s == NULL) {
+        AFLOG_ERR("af_ipcc_shutdown_server_NULL");
+        return;
+    }
 
-        /* close the server socket and free request resources */
-        if (s->fd != -1) {
-            af_ipc_util_shutdown_requests(&s->req_control);
-            shutdown(s->fd, SHUT_RDWR);
-            EVUTIL_CLOSESOCKET(s->fd);
-            s->fd = -1;
-        }
-
-        free(s);
+    if ((s->flags & FLAGS_IN_RECEIVE) != 0) {
+        s->flags |= FLAGS_MARKED_FOR_SHUTDOWN;
+    } else {
+        close_and_free_server(s);
     }
 }
+

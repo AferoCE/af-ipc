@@ -25,12 +25,14 @@ typedef struct af_ipcc_server_struct af_ipcc_server_t;
  * serverName - name of server
  * receiveCallback - function that will be called when a command or unsolicited message is received
  * receiveContext - context for the unsolicited message callback
- * closeCallback - callback when server closes or exits prematurely
+ * closeCallback - callback when server exits prematurely
  *
  * Returns a pointer to the server if successful; otherwise returns NULL and
  * errno contains the error code
  *
- * The receiveContext is passed as a parameter to the closeCallback.
+ * The receiveContext is passed as a parameter to the closeCallback. When the closeCallback is called
+ * do not call af_ipcc_shutdown. The server will be cleaned up and freed for you after the callback
+ * completes.
  */
 
 af_ipcc_server_t *af_ipcc_get_server(struct event_base *base, char *serverName,
@@ -99,6 +101,11 @@ int af_ipcc_send_request(af_ipcc_server_t *s,
  * af_ipcc_shutdown -- shuts down connection to server
  *
  * s - server for which the connection will be shut down
+ *
+ * The close callback will not be called in response to this function
+ *
+ * This function can be called from inside the receive callback.
+ * You should NOT use the server structure after calling this function.
  *
  */
 void af_ipcc_shutdown(af_ipcc_server_t *s);
