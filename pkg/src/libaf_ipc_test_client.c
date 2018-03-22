@@ -167,9 +167,9 @@ int main(int argc, char *argv[])
     AFLOG_INFO("libevent is using %s for events", event_base_get_method(s_client_evbase));
 
 
-    my_server = af_ipcc_get_server(s_client_evbase,
-                                   SERVER_NAME,
-                                   test_receive, NULL, NULL);
+    my_server = af_ipcc_open_server(s_client_evbase,
+                                    SERVER_NAME,
+                                    test_receive, NULL, NULL);
 
 	if (my_server == NULL) {
         AFLOG_ERR("failed to get server %s", SERVER_NAME);
@@ -208,7 +208,7 @@ int main(int argc, char *argv[])
     AFLOG_INFO("shut_down::Test Client is shutting down");
 
     // Clean up libevent and  the ipc layer 
-	af_ipcc_shutdown(my_server);
+	af_ipcc_close(my_server);
 
     event_base_free(s_client_evbase);
 

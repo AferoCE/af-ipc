@@ -1,5 +1,5 @@
 /*
- * aflib_ipc_client.c
+ * af_ipc_client.c
  *
  * This is the APIs for the client side of the Afero IPC layer
  * infrastructure.
@@ -31,34 +31,39 @@
 #define FLAGS_MARKED_FOR_SHUTDOWN (1 << 0)
 #define FLAGS_IN_RECEIVE          (1 << 1)
 
+/*
+ * This structure represents the server.
+ *
+ * fd              - file descriptor used to communicate with server
+ * event_base      - the event base structure for the event loop
+ * lastSeqNum      - the last used sequence number; used to generate new sequence nums
+ * flags           - flags related to the server
+ * receiveCallback - called when data is received from the server
+ * closeCallback   - called when connection to the server is closed
+ * receiveContext  - context for the receiveCallback and closeCallback
+ * event           - event that fires when data is received from the server
+ * req_control     - database of requests to the server
+ */
 struct af_ipcc_server_struct {
-    int                   fd;         // fd to 'remote server'
-    struct event_base     *event_base;
-
-    /* pending request DB */
-    uint16_t              lastSeqNum; // 16 bits; zero not allowed except on initialization
-    uint16_t              flags;
-
-    /* callback functions */
+    int                       fd;
+    struct event_base         *event_base;
+    uint16_t                  lastSeqNum;
+    uint16_t                  flags;
     af_ipc_receive_callback_t receiveCallback;
-    af_ipcc_close_callback_t closeCallback;
-    void                  *receiveContext;
-    struct                event *event;  // receive event
-    af_ipc_req_control_t  req_control;
+    af_ipcc_close_callback_t  closeCallback;
+    void                      *receiveContext;
+    struct                    event *event;
+    af_ipc_req_control_t      req_control;
 };
 
-/* function defintion */
 static void
 af_ipcc_client_on_recv(int listenfd, short evtype, void *arg);
 
-/* af_ipcc_get_server
- *
- * A client want to connect the 'name' server for IPC communication.
- */
-af_ipcc_server_t *af_ipcc_get_server(struct event_base *base, char *name,
-                                     af_ipc_receive_callback_t receiveCallback,
-									 void *receiveContext,
-                                     af_ipcc_close_callback_t closeCallback)
+af_ipcc_server_t
+*af_ipcc_open_server(struct event_base *base, char *name,
+                     af_ipc_receive_callback_t receiveCallback,
+                     void *receiveContext,
+                     af_ipcc_close_callback_t closeCallback)
 {
     int             remote_server_fd;
     int             addrlen;
@@ -129,13 +134,18 @@ af_ipcc_server_t *af_ipcc_get_server(struct event_base *base, char *name,
     return server;
 }
 
-void close_and_free_server(af_ipcc_server_t *s)
+static void
+close_and_free_server(int status, af_ipcc_server_t *s)
 {
-    AFLOG_DEBUG2("close_and_free_server:s=%p", s);
+    if (!s) return;
+
+    af_ipcc_close_callback_t closeCb = s->closeCallback;
+    void *closeContext = s->receiveContext;
 
     /* free the persist event for the read */
     if (s->event) {
         event_del(s->event);
+        event_free(s->event);
         s->event = NULL;
     }
 
@@ -148,6 +158,11 @@ void close_and_free_server(af_ipcc_server_t *s)
     }
 
     free(s);
+
+    /* execute the callback */
+    if (closeCb) {
+        (closeCb) (status, closeContext);
+    }
 }
 
 /*
@@ -171,7 +186,6 @@ af_ipcc_client_on_recv(int listenfd, short evtype, void *arg)
         return;
     }
 
-
     if (evtype & EV_READ) {
         while(1) {
             memset(recv_buffer, 0, sizeof(recv_buffer));
@@ -184,16 +198,9 @@ af_ipcc_client_on_recv(int listenfd, short evtype, void *arg)
                     }
                     AFLOG_ERR("ipc_client_receive_error:fd=%d,errno=%d", listenfd, errno);
                 } else {
-                    AFLOG_INFO("ipc_client_closed:fd=%d,errno=%d:client closed", listenfd, errno);
+                    AFLOG_INFO("ipc_client_closed:fd=%d,errno=%d:closing client", listenfd, errno);
                 }
-
-                /* an error occurred; call the close callback */
-                if (server->closeCallback) {
-                    (server->closeCallback)(server->receiveContext);
-                }
-
-                /* and shut down the server */
-                close_and_free_server(server);
+                close_and_free_server(AF_IPC_STATUS_ERROR, server);
                 break;
             } else {
                 server->flags |= FLAGS_IN_RECEIVE;
@@ -202,146 +209,108 @@ af_ipcc_client_on_recv(int listenfd, short evtype, void *arg)
                                               server->receiveCallback, server->receiveContext);
                 server->flags &= ~FLAGS_IN_RECEIVE;
                 if ((server->flags & FLAGS_MARKED_FOR_SHUTDOWN) != 0) {
-                    close_and_free_server(server);
+                    close_and_free_server(AF_IPC_STATUS_OK, server);
                     break;
                 }
             }
         }
-    }
-    else {
+    } else {
         AFLOG_WARNING("ipc_client_event:event=0x%hx:Unsupported event type received", evtype);
     }
 }
 
-
-/*
- * af_ipcc_send_request -- sends request to server with an expected response
- *
- * s - server to send message to
- * txBuffer - buffer used to compose a message
- * txBufferSize - size of composition buffer
- * callback - callback that is called when the response is received or a timeout occurs
- *            Set to NULL for an unsolicited message.
- * context - context for the callback
- * timeoutMs - milliseconds before the request times out, or 0 if no timeout (see notes)
- *
- * The caller is responsible for allocating the transmit buffer. The buffer can be
- * reused as soon as the function returns.
- *
- * The timeoutMs parameter specifies the maximum time that can pass before the
- * receive callback gets called. If the server responds to the request after
- * this time, the response is dropped.
- *
- * Returns 0 on success or -1 on failure; errno contains the error.
- */
 int
 af_ipcc_send_request(af_ipcc_server_t *server, uint8_t *txBuffer, int txBufferSize,
                      af_ipc_receive_callback_t callback, void *context,
                      int timeoutMs)
 {
     if (server == NULL) {
-        AFLOG_ERR("ipc_client_send_req_server:server=NULL:bad server");
+        AFLOG_ERR("ipcc_send_req_server:server=NULL:bad server");
         errno = EINVAL;
         return -1;
     }
 
     if (server->fd < 0) {
-        AFLOG_ERR("ipc_client_send_req_server_fd:fd=%d:Server fd is invalid", server->fd);
+        AFLOG_ERR("ipcc_send_req_fd:fd=%d:Server fd is invalid", server->fd);
         errno = EINVAL;
         return -1;
     }
 
-    return af_ipc_send(server->fd, &server->req_control, server->event_base,
-                       0, txBuffer, txBufferSize,
-                       callback, context, timeoutMs, "client");
+    int retVal = af_ipc_send(server->fd, &server->req_control, server->event_base,
+                             0, txBuffer, txBufferSize,
+                             callback, context, timeoutMs, "client");
+    if (retVal < 0) {
+        AFLOG_ERR("ipcc_send_req_failed:errno=%d:closing client", errno);
+        close_and_free_server(AF_IPC_STATUS_ERROR, server);
+    }
+    return retVal;
 }
 
-
-/*
- * af_ipcc_send_response -- send a response to the server
- *
- * s - server to send message to
- * seqNum - sequence number of request to which this is the response
- * txBuffer - Buffer of data to send
- * txBufferSize - Size of data in buffer
- *
- * The sequence number allows the server to match the response to a particular request.
- *
- * The caller is responsible for allocating the transmit buffer. The buffer can be
- * reused as soon as the function returns.
- *
- * returns 0 if successful or -1 if not; errno contains error
- */
 int
 af_ipcc_send_response (af_ipcc_server_t *server, uint32_t seqNum,
                        uint8_t *txBuffer, int txBufferSize)
 {
     if (server == NULL) {
-        AFLOG_ERR("ipc_client_send_resp_server:server=NULL:bad server");
+        AFLOG_ERR("ipcc_send_resp_server:server=NULL:bad server");
         errno = EINVAL;
         return -1;
     }
 
     if (server->fd < 0) {
-        AFLOG_ERR("ipc_client_send_resp_server_fd:fd=%d:server fd is invalid", server->fd);
+        AFLOG_ERR("ipcc_send_resp_fd:fd=%d:server fd is invalid", server->fd);
         errno = EINVAL;
         return -1;
     }
 
-    return af_ipc_send(server->fd, NULL, NULL,
-                       seqNum, txBuffer, txBufferSize,
-                       NULL, NULL, 0, "client");
+    int retVal = af_ipc_send(server->fd, NULL, NULL,
+                             seqNum, txBuffer, txBufferSize,
+                             NULL, NULL, 0, "client");
+    if (retVal < 0) {
+        AFLOG_ERR("ipcc_send_resp_failed:errno=%d:closing client", errno);
+        close_and_free_server(AF_IPC_STATUS_ERROR, server);
+    }
+    return retVal;
 }
 
-/*
- * af_ipcc_send_unsolicited -- send an unsolicited message to the server
- *
- * s - server to send message to
- * txBuffer - Buffer of data to send
- * txBufferSize - Size of data in buffer
- *
- * The caller is responsible for allocating the transmit buffer. The buffer can be
- * reused as soon as the function returns.
- *
- * returns 0 if successful or -1 if not; errno contains error
- */
 int
 af_ipcc_send_unsolicited (af_ipcc_server_t *server,
                           uint8_t *txBuffer, int txBufferSize)
 {
     if (server == NULL) {
-        AFLOG_ERR("ipc_send_unsol_server:server=NULL:bad server");
+        AFLOG_ERR("ipcc_send_unsol_server:server=NULL:bad server");
         errno = EINVAL;
         return -1;
     }
 
     if (server->fd < 0) {
-        AFLOG_ERR("ipc_send_unsol_server_fd:fd=%d:server fd is invalid", server->fd);
+        AFLOG_ERR("ipcc_send_unsol_fd:fd=%d:server fd is invalid", server->fd);
         errno = EINVAL;
         return -1;
     }
 
-    return af_ipc_send(server->fd, NULL, NULL,
-                       0, txBuffer, txBufferSize,
-                       NULL, NULL, 0, "client");
+    int retVal = af_ipc_send(server->fd, NULL, NULL,
+                             0, txBuffer, txBufferSize,
+                             NULL, NULL, 0, "client");
+    if (retVal < 0) {
+        AFLOG_ERR("ipcc_send_unsol_send:errno=%d:closing client", errno);
+        close_and_free_server(AF_IPC_STATUS_ERROR, server);
+    }
+    return retVal;
 }
 
-/*
- * API to shutdown the server
- *
- */
-
-void af_ipcc_shutdown(af_ipcc_server_t *s)
+void
+af_ipcc_close(af_ipcc_server_t *s)
 {
     if (s == NULL) {
-        AFLOG_ERR("af_ipcc_shutdown_server_NULL");
+        AFLOG_ERR("af_ipcc_close_NULL");
         return;
     }
 
     if ((s->flags & FLAGS_IN_RECEIVE) != 0) {
+        AFLOG_DEBUG1("ipc_marked_for_shutdown");
         s->flags |= FLAGS_MARKED_FOR_SHUTDOWN;
     } else {
-        close_and_free_server(s);
+        close_and_free_server(AF_IPC_STATUS_OK, s);
     }
 }
 

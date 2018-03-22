@@ -28,48 +28,69 @@
 #include "af_ipc_prv.h"
 
 /*
- * This structure is used by the server to identify the number
- * clients (i.e the daemon processes) that server wants to
- * communicate with.
+ * This structure is used by the server to represent each client
+ * (i.e., the daemon process) the server communicates with.
  *
- * client_fd - the socket of this client (e.g freed)
+ * next            - next client this server is connected to
+ * client_fd       - the socket of this client (e.g freed)
  * cid             - the client ID as assigned by the server
  * seqNum          - the sequence number of the next command sent from server to client
  * recv_event      - libevent2 event used to watch client socket
- * req_control     - database of server requests
- * clientContext   - the context info to pass into the client callback
- *                   function.
+ * server          - pointer to the server connected to this client
+ * req_control     - database of requests initiated by the client
+ * clientContext   - the context info to pass into the client callback function
+ * flags           - flags related to the client
+ * pad             - pad to align the structure to a 32-bit boundary
  */
 typedef struct af_ipcs_client_struct {
     struct af_ipcs_client_struct *next;
-    int                     client_fd;
-    uint16_t                cid;    // client_id
-    uint16_t                seqNum; // server to client sequence number
-    struct event            *recv_event;
+    int                          client_fd;
+    uint16_t                     cid;
+    uint16_t                     seqNum;
+    struct event                 *recv_event;
     struct af_ipcs_server_struct *server;
-    af_ipc_req_control_t    req_control;
-    void                    *clientContext;
+    af_ipc_req_control_t         req_control;
+    void                         *clientContext;
+    uint16_t                     flags;
+    uint16_t                     pad;
 } af_ipcs_client_t;
+
+#define CLIENT_FLAGS_MARKED_FOR_SHUTDOWN (1 << 0)
+#define CLIENT_FLAGS_IN_RECEIVE          (1 << 1)
 
 #define DEFAULT_NUM_CLIENTS    4
 
+/*
+ * This structure is used to represent the server.
+ *
+ * server_fd             - the file descripter of the listening socket
+ * base                  - the event base structure of the event loop
+ * server_listener_event - the event that fires when data is available on the listening
+ *                         socket
+ * client_mutex          - the mutex protecting the integrity of the client list
+ * clientPool            - the pool of clients from which new clients can be allocated
+ * lastCid               - the last client ID; used to generating new client IDs
+ * acceptCallback        - called when a new client is accepted by the server
+ * acceptContext         - the context provided to the accept callback
+ * receiveCallback       - called when data is received by the client
+ * closeCallback         - called when the client is closed down
+ */
 struct af_ipcs_server_struct {
-    int          server_fd;
-    struct       event_base *base;
-    struct event *server_listener_event;
-
-    pthread_mutex_t clnt_mutex; /* serialize access to clients */
+    int                          server_fd;
+    struct                       event_base *base;
+    struct event                 *server_listener_event;
+    pthread_mutex_t              clnt_mutex;
     struct af_ipcs_client_struct *clients;
-    af_mempool_t *clientPool;
-    int          lastCid;
-
-    /* callback func when the server accepts a socket
-     */
-    af_ipcs_accept_callback_t acceptCallback;
-    void         *acceptContext;
-    af_ipc_receive_callback_t receiveCallback;
-    af_ipcs_close_callback_t closeCallback;
+    af_mempool_t                 *clientPool;
+    uint16_t                     lastCid;
+    uint16_t                     flags;
+    af_ipcs_accept_callback_t    acceptCallback;
+    void                         *acceptContext;
+    af_ipc_receive_callback_t    receiveCallback;
+    af_ipcs_close_callback_t     closeCallback;
 };
+
+#define SERVER_FLAGS_MUTEX_INITIALIZED (1 << 0)
 
 #define IPC_SERVER_BACKLOG_QLEN  16
 
@@ -82,8 +103,8 @@ get_next_cid(af_ipcs_server_t *s)
     while(1) {
         s->lastCid++;
 
-        if (s->lastCid >= (1 << 15)) {  // check for rollover
-            s->lastCid = 1;
+        if (s->lastCid == 0) {
+            s->lastCid++;
         }
         af_ipcs_client_t *c;
 
@@ -102,7 +123,7 @@ get_next_cid(af_ipcs_server_t *s)
 static af_ipcs_client_t *
 alloc_and_init_client(af_ipcs_server_t *s)
 {
-    af_ipcs_client_t *c = af_mempool_alloc(s->clientPool);
+    af_ipcs_client_t *c = (af_ipcs_client_t *)af_mempool_alloc(s->clientPool);
 
     if (c == NULL) {
         AFLOG_ERR("ipc_server_cant_alloc::unable to allocate new client");
@@ -139,52 +160,56 @@ find_client_by_cid(af_ipcs_server_t *s, int cid)
     return NULL;
 }
 
+#define AF_IPC_STATUS_DONT_CALL_CALLBACK 1
 
 static void
-close_client(af_ipcs_client_t *client)
+close_client(int status, af_ipcs_client_t *client)
 {
     if (!client || !client->server) return;
+
+    uint16_t cid = client->cid;
+    void *context = client->clientContext;
+    af_ipcs_server_t *server = client->server;
 
     // shutdown the client socket
     shutdown(client->client_fd, SHUT_RD);
 
     // turn off receive event
     if (client->recv_event) {
-        event_del(client->recv_event);
         event_free(client->recv_event);
+        client->recv_event = NULL;
     }
 
     // remove client from list of active clients
     int client_fd = client->client_fd;
 
-    pthread_mutex_lock(&client->server->clnt_mutex);
+    pthread_mutex_lock(&server->clnt_mutex);
     af_ipcs_client_t *c, *last = NULL;
-    for (c = client->server->clients; c; c = c->next) {
+    for (c = server->clients; c; c = c->next) {
         if (client == c) {
             if (last) {
                 last->next = c->next;
             } else {
-                client->server->clients = c->next;
+                server->clients = c->next;
             }
             break;
         }
         last = c;
     }
-    pthread_mutex_unlock(&client->server->clnt_mutex);
+    pthread_mutex_unlock(&server->clnt_mutex);
 
     // clean up the request control structure
     af_ipc_util_shutdown_requests(&client->req_control);
-
-    // call the close callback
-    if (client->server->closeCallback) {
-        client->server->closeCallback(client->clientContext);
-    }
 
     // free the client memory
     af_mempool_free(client);
 
     // close the client fd
     EVUTIL_CLOSESOCKET(client_fd);
+
+    if (status != AF_IPC_STATUS_DONT_CALL_CALLBACK && server->closeCallback) {
+        (server->closeCallback)(status, cid, context);
+    }
 }
 
 
@@ -209,7 +234,7 @@ add_client (af_ipcs_server_t *s, int  client_fd)
 
         if (client->recv_event == NULL) {
             AFLOG_ERR("add_client_recv_event::can't allocate receive event; closing");
-            close_client(client);
+            close_client(AF_IPC_STATUS_DONT_CALL_CALLBACK, client);
         } else {
             /* call the accept callback to inform the application of the new client */
             if (s->acceptCallback) {
@@ -227,16 +252,6 @@ add_client (af_ipcs_server_t *s, int  client_fd)
     return (client);
 }
 
-
-/*
- * af_ipcs_send_response -- send a response to a client
- *
- * seqNum - sequence number of request to which this is the response
- * txBuffer - Buffer of data to send
- * txBufferSize - Size of data in buffer
- *
- * returns 0 if successful or -1 if not; errno contains error
- */
 int
 af_ipcs_send_response(af_ipcs_server_t *s, uint32_t seqNum, uint8_t *txBuffer, int txBufferSize)
 {
@@ -262,6 +277,12 @@ af_ipcs_send_response(af_ipcs_server_t *s, uint32_t seqNum, uint8_t *txBuffer, i
             result = af_ipc_send(this_client->client_fd, NULL, NULL,
                                  seqNum, txBuffer, txBufferSize,
                                  NULL, NULL, 0, "server");
+            if (result < 0) {
+                AFLOG_ERR("af_ipcs_send_response_send:errno=%d:failed to send, closing client", errno);
+                pthread_mutex_unlock(&s->clnt_mutex);
+                close_client(AF_IPC_STATUS_ERROR, this_client);
+                return result;
+            }
         }
         else {
             AFLOG_ERR("ipc_server_send_resp_client_id:clientId=%d,seqNum=%x:client id not found", clientId, seqNum);
@@ -277,15 +298,6 @@ af_ipcs_send_response(af_ipcs_server_t *s, uint32_t seqNum, uint8_t *txBuffer, i
     return result;
 }
 
-/*
- * af_ipcs_send_unsolicited -- send an unsolicited message to a client
- *
- * clientId - client ID of client to which message should be sent, 0 for broadcast
- * txBuffer - Buffer of data to send
- * txBufferSize - Size of data in buffer
- *
- * returns 0 if successful or -1 if not; errno contains error
- */
 int
 af_ipcs_send_unsolicited (af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuffer, int txBufferSize)
 {
@@ -318,6 +330,12 @@ af_ipcs_send_unsolicited (af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuf
                 result = af_ipc_send(fd, NULL, NULL,
                                      0, txBuffer, txBufferSize,
                                      NULL, NULL, 0, "server");
+                if (result < 0) {
+                    AFLOG_ERR("af_ipcs_send_unsol_send:errno=%d:failed to send, closing client", errno);
+                    pthread_mutex_unlock(&s->clnt_mutex);
+                    close_client(AF_IPC_STATUS_ERROR, this_client);
+                    return result;
+                }
             } else {
                 AFLOG_ERR("ipc_server_send_unsol_client_fd:fd=%d:client fd is invalid", fd);
                 errno = EINVAL;
@@ -334,26 +352,6 @@ af_ipcs_send_unsolicited (af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuf
     return result;
 }
 
-/*
- * af_ipcs_send_request -- sends request to a client with an expected response
- *
- * clientId - client ID of client to which message should be sent
- * txBuffer - buffer used to compose a message
- * txBufferSize - size of composition buffer
- * callback - callback that is called when the response is received or a timeout occurs
- *            Set to NULL if unsolicited
- * context - context for the callback
- * timeoutMs - milliseconds before the request times out, or 0 if no timeout (see notes)
- *
- * The caller is responsible for allocating the transmit buffer. The buffer can be
- * reused as soon as the function returns.
- *
- * The timeoutMs parameter specifies the maximum time that can pass before the
- * receive callback gets called. If the client responds to the request after
- * this time, the response is dropped.
- *
- * Returns 0 on success or -1 on failure; errno contains the error.
- */
 int
 af_ipcs_send_request(af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuffer, int txBufferSize,
                      af_ipc_receive_callback_t callback, void *context,
@@ -374,13 +372,19 @@ af_ipcs_send_request(af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuffer, 
     int result = -1;
     pthread_mutex_lock(&s->clnt_mutex);
 
-    af_ipcs_client_t *client = find_client_by_cid(s, clientId);
-    if (client != NULL) {
-        int fd = client->client_fd;
+    af_ipcs_client_t *this_client = find_client_by_cid(s, clientId);
+    if (this_client != NULL) {
+        int fd = this_client->client_fd;
         if (fd >= 0) {
-            result = af_ipc_send(fd, &client->req_control, s->base,
+            result = af_ipc_send(fd, &this_client->req_control, s->base,
                                  0, txBuffer, txBufferSize,
                                  callback, context, timeoutMs, "server");
+            if (result < 0) {
+                AFLOG_ERR("af_ipcs_send_req_send:errno=%d:failed to send, closing client", errno);
+                pthread_mutex_unlock(&s->clnt_mutex);
+                close_client(AF_IPC_STATUS_ERROR, this_client);
+                return result;
+            }
         } else {
             AFLOG_ERR("ipc_server_send_req_client_fd:fd=%d:invalid client fd", fd);
             errno = ENOENT;
@@ -394,24 +398,18 @@ af_ipcs_send_request(af_ipcs_server_t *s, uint16_t clientId, uint8_t *txBuffer, 
     return result;
 }
 
-/*
- * Disconnect a client, if they're still currently connected.
- *
- * server - pointer to server object
- * clientId - ID of client to disconnect
- */
 int
-af_ipcs_disconnect_client(af_ipcs_server_t *server, uint16_t clientId)
+af_ipcs_close_client(af_ipcs_server_t *server, uint16_t clientId)
 {
     af_ipcs_client_t *client = find_client_by_cid(server, clientId);
-    if (client == NULL) return -1;
-    close_client(client);
+    if (client == NULL) {
+        AFLOG_ERR("af_ipcs_shutdown_client_id:clientId=%d:client not found", clientId);
+        return -1;
+    }
+    close_client(AF_IPC_STATUS_OK, client);
     return 0;
 }
 
-/*
- * Callback function to receive data from client socket
- */
 static void
 on_recv(evutil_socket_t fd, short events, void *arg)
 {
@@ -437,14 +435,20 @@ on_recv(evutil_socket_t fd, short events, void *arg)
                     AFLOG_ERR("receive_error:fd=%d,errno=%d", fd, errno);
                 }
 
-                close_client(client);
+                close_client(AF_IPC_STATUS_ERROR, client);
                 break;
             }
             else {  // we got a message from the client
+                client->flags |= CLIENT_FLAGS_IN_RECEIVE;
                 af_ipc_handle_receive_message(fd, (uint8_t *)buf, recvmsg_len,
                                               client->cid, &client->req_control,
                                               client->server->receiveCallback,
 											  client->clientContext);
+                client->flags &= ~CLIENT_FLAGS_IN_RECEIVE;
+                if ((client->flags & CLIENT_FLAGS_MARKED_FOR_SHUTDOWN) != 0) {
+                    close_client(AF_IPC_STATUS_OK, client);
+                    break;
+                }
             }
         }
     }
@@ -453,7 +457,6 @@ on_recv(evutil_socket_t fd, short events, void *arg)
         AFLOG_WARNING("ipc_server_event:event=%d:Unsupported event type received", events);
     }
 
-    return;
 } // on_recv
 
 
@@ -479,7 +482,7 @@ on_accept(evutil_socket_t server_fd, short event, void *arg)
     }
 
     client_fd = accept(server_fd, (struct sockaddr*)&ss, &slen);
-    if (client_fd < 0) { // XXXX eagain - how best to handle that??
+    if (client_fd < 0) {
         if(errno != EWOULDBLOCK && errno != EAGAIN) {
             AFLOG_ERR("ipc_server_accept_err:errno=%d,server_fd=%d:Error accepting an incoming connection", errno, server_fd);
         }
@@ -523,7 +526,7 @@ extern const char BUILD_DATE[];
  *
  */
 af_ipcs_server_t *
-af_ipcs_init(struct event_base *base,
+af_ipcs_open(struct event_base *base,
              char              *name,
              af_ipcs_accept_callback_t acceptCallback, void *acceptContext,
              af_ipc_receive_callback_t receiveCallback,
@@ -634,7 +637,7 @@ af_ipcs_init(struct event_base *base,
 
 error:
     if (s) {
-        af_ipcs_shutdown(s);
+        af_ipcs_close(s);
     }
 
     return NULL;
@@ -643,7 +646,7 @@ error:
 
 /* closing down the server */
 void
-af_ipcs_shutdown(af_ipcs_server_t *s)
+af_ipcs_close(af_ipcs_server_t *s)
 {
     if (s == NULL) {
         AFLOG_ERR("ipc_server_shutdown:server=NULL:bad server");
@@ -668,28 +671,33 @@ af_ipcs_shutdown(af_ipcs_server_t *s)
         EVUTIL_CLOSESOCKET(s->server_fd);
     }
 
-    af_ipcs_client_t *c;
+    if (s->flags & SERVER_FLAGS_MUTEX_INITIALIZED) {
+        af_ipcs_client_t *c;
 
-    for (c = s->clients; c; c = c->next) {
-        shutdown(c->client_fd, SHUT_RDWR);
+        for (c = s->clients; c; c = c->next) {
+            shutdown(c->client_fd, SHUT_RDWR);
 
-        if (c->recv_event) {
-            event_free(c->recv_event);
+            if (c->recv_event) {
+                event_free(c->recv_event);
+            }
+
+            /* clean up outstanding requests */
+            af_ipc_util_shutdown_requests(&c->req_control);
+
+            EVUTIL_CLOSESOCKET(c->client_fd);
+
+            /* call the close callback */
+            if (s->closeCallback) {
+                s->closeCallback(AF_IPC_STATUS_OK, c->cid, c->clientContext);
+            }
         }
 
-        /* clean up outstanding requests */
-        af_ipc_util_shutdown_requests(&c->req_control);
-
-        /* call the close callback */
-        if (s->closeCallback) {
-            s->closeCallback(c->clientContext);
-        }
-
-        EVUTIL_CLOSESOCKET(c->client_fd);
+        pthread_mutex_destroy(&s->clnt_mutex);
     }
-    af_mempool_destroy(s->clientPool);
 
-    pthread_mutex_destroy(&s->clnt_mutex);
+    if (s->clientPool) {
+        af_mempool_destroy(s->clientPool);
+    }
 
     free(s);
 }

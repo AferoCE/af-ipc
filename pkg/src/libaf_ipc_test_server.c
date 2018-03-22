@@ -33,7 +33,7 @@ static int s_failures = 0;
 
 uint16_t originatingClient = 0; /* if zero, no client has originated test sequence */
 
-void close_callback(void *clientContext)
+void close_callback(int status, uint16_t clientId, void *clientContext)
 {
     AFLOG_DEBUG1("closing_context:clientContext_null=%d", (clientContext==NULL));
 }
@@ -197,7 +197,7 @@ int main(int argc, char *argv[])
     AFLOG_INFO("method:base_method=%s,base=%d:",
                event_base_get_method(server_evbase), (server_evbase==NULL));
 
-    my_server = af_ipcs_init(server_evbase, SERVER_NAME,
+    my_server = af_ipcs_open(server_evbase, SERVER_NAME,
                              accept_callback, NULL, // accept cb, accept ctx
                              subsys_test1_receive, close_callback); // rx cb, close cb
 	if (my_server == NULL) {
@@ -212,7 +212,7 @@ int main(int argc, char *argv[])
     }
     AFLOG_INFO("shut_down::Server is shutting down");
 
-    af_ipcs_shutdown(my_server);
+    af_ipcs_close(my_server);
 
     /* cleanup the event loop & the ipc layer */
     event_base_free(server_evbase);

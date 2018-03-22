@@ -86,6 +86,21 @@ handle_timeout(evutil_socket_t fd, short what, void *arg)
     event_base_loopexit(s_base, &tmout_ms);
 }
 
+/* internal event used to handle an unexpected close */
+static void
+handle_close(int status, void *context)
+{
+    /* IPC will have closed the server; don't double close it */
+    if (s_server) {
+        s_server = NULL;
+    }
+
+    struct timeval  tmout_ms = {0, 100};
+
+    /* just exist the eventloop */
+    event_base_loopexit(s_base, &tmout_ms);
+}
+
 /* main for ipc_wait
  */
 int
@@ -134,8 +149,8 @@ main(int argc, const char * argv[])
         return retVal;
     }
 
-    s_server = af_ipcc_get_server (s_base, (char *)sName,
-                                 handle_receive, NULL, NULL);
+    s_server = af_ipcc_open_server(s_base, (char *)sName,
+                                   handle_receive, NULL, handle_close);
     if (s_server == NULL) {
         event_base_free(s_base);
 
@@ -243,7 +258,7 @@ main(int argc, const char * argv[])
 
 exit:
     if (s_server) {
-        af_ipcc_shutdown(s_server);
+        af_ipcc_close(s_server);
     }
 
     if (tm_event) {

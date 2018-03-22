@@ -44,8 +44,8 @@ static af_rpc_param_t in_params[IPC_SEND_MAX_PARAMS];
 static int            num_in_params = 0;
 uint8_t               dataReceived = 0;
 static int            outBufferSize = 0;
-static uint8_t outBuffer[IPC_SEND_INSTR_MAX_LEN];
-static uint8_t txBuffer[IPC_SEND_INSTR_MAX_LEN];
+static uint8_t        outBuffer[IPC_SEND_INSTR_MAX_LEN];
+static uint8_t        txBuffer[IPC_SEND_INSTR_MAX_LEN];
 
 static struct event_base *s_base = NULL;
 
@@ -435,6 +435,19 @@ dealloc_params()
     return;
 }
 
+static void
+on_close(int status, void *context)
+{
+    /* the IPC layer has freed the server. Set the pointer
+     * to it to NULL so we don't double free
+     */
+    if (s_server) {
+        s_server = NULL;
+    }
+
+    struct timeval  tmout_ms = {0, 100};
+    event_base_loopexit(s_base, &tmout_ms);
+}
 
 /* main for ipc_send
  */
@@ -472,8 +485,8 @@ int main(int argc, const char * argv[])
         return retVal;
     }
 
-    s_server = af_ipcc_get_server (s_base, (char *)name,
-                                 NULL, NULL, NULL);
+    s_server = af_ipcc_open_server(s_base, (char *)name,
+                                   NULL, NULL, on_close);
     if (s_server == NULL) {
         event_base_free(s_base);
         dealloc_params();
@@ -586,7 +599,7 @@ exit:
     dealloc_params();
 
     if (s_server) {
-        af_ipcc_shutdown(s_server);
+        af_ipcc_close(s_server);
     }
 
     if (test_event) {
