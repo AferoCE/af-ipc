@@ -10,6 +10,8 @@ AC_CONFIG_FILES([
  src/Makefile
 ])
 
+AM_CONDITIONAL([BUILD_TARGET_DEBUG], [test x$BUILD_TARGET = xdebug])
+
 LT_INIT
 AC_OUTPUT
 

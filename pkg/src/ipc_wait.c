@@ -30,7 +30,11 @@
 #define IPC_WAIT_ERR    (-1)
 #define IPC_WAIT_OK     0
 
+#ifdef BUILD_TARGET_DEBUG
 uint32_t g_debugLevel = LOG_DEBUG4;
+#else
+uint32_t g_debugLevel = LOG_DEBUG1;
+#endif
 
 /* the server name */
 static const char *sName   = NULL;
