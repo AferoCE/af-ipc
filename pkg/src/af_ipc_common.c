@@ -251,7 +251,7 @@ af_ipc_send(int fd, af_ipc_req_control_t *req_control, struct event_base *base,
     struct af_ipc_msghdr req_hdr;
 
     if (g_debugLevel >= 2 && timeoutMs <= 0) {
-        char hexBuf[80];
+        char hexBuf[320];
         af_util_convert_data_to_hex_with_name("buf", txBuffer, txBufferSize, hexBuf, sizeof(hexBuf));
         if (seqNum) {
             AFLOG_DEBUG2("ipc_%s_tx_response:fd=%d,seqNum=%08x,%s", name, fd, seqNum, hexBuf);
@@ -300,7 +300,7 @@ af_ipc_send(int fd, af_ipc_req_control_t *req_control, struct event_base *base,
             req->seqNum = seqNum;
 
             if (g_debugLevel >= 2) {
-                char hexBuf[80];
+                char hexBuf[320];
                 af_util_convert_data_to_hex_with_name("buf", txBuffer, txBufferSize, hexBuf, sizeof(hexBuf));
                 AFLOG_DEBUG2("ipc_%s_tx_request:fd=%d,seqNum=%08x,%s", name, fd, seqNum, hexBuf);
             }
@@ -403,7 +403,7 @@ void af_ipc_handle_receive_message(int fd, uint8_t *buf, int len,
             /* this is an incoming command or an unsolicited command */
 
             if (g_debugLevel >= 2) {
-                char hexBuf[80];
+                char hexBuf[320];
                 af_util_convert_data_to_hex_with_name("buf",
                                                       buf + pos + AF_IPC_MSGHDR_LEN, msghdr->len - AF_IPC_MSGHDR_LEN,
                                                       hexBuf, sizeof(hexBuf));
@@ -444,7 +444,7 @@ void af_ipc_handle_receive_message(int fd, uint8_t *buf, int len,
             }
         } else {
             if (g_debugLevel >= 2) {
-                char hexBuf[80];
+                char hexBuf[320];
                 af_util_convert_data_to_hex_with_name("buf",
                                                       buf + pos + AF_IPC_MSGHDR_LEN,
                                                       msghdr->len - AF_IPC_MSGHDR_LEN,
