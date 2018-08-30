@@ -262,7 +262,7 @@ af_rpc_add_blob_to_buffer(uint8_t *buf, int bufSize, void *blob, int blobSize)
 {
     int pos = 0;
 
-    if (buf == NULL || bufSize <= 0 || blob == NULL || blobSize <= 0 || blobSize > AF_RPC_MAX_BLOB_SIZE) {
+    if (buf == NULL || bufSize <= 0 || blobSize < 0 || (blob == NULL && blobSize > 0) || blobSize > AF_RPC_MAX_BLOB_SIZE) {
         return AF_RPC_ERR_BAD_PARAM;
     }
 
@@ -278,13 +278,15 @@ af_rpc_add_blob_to_buffer(uint8_t *buf, int bufSize, void *blob, int blobSize)
         return AF_RPC_ERR_BUFFER_OVERFLOW;
     }
 
-    /* Position already at current data length. Store uint type.*/
+    /* Position already at current data length. Store blob type.*/
     setlen(&buf[pos], AF_RPC_TYPE_BLOB(blobSize));
     pos += TYPE_SIZE;
 
     /* Store the value. */
-    memcpy(&buf[pos], blob, blobSize);
-    pos += blobSize;
+    if (blobSize) {
+        memcpy(&buf[pos], blob, blobSize);
+        pos += blobSize;
+    }
 
     /* Set the length in the buffer. */
     setlen(buf, pos);
@@ -377,12 +379,14 @@ af_rpc_create_buffer_with_params(uint8_t *buf, int bufSize, af_rpc_param_t *para
             pos += sizeof(uint16_t);
 
             /* check and store blob value */
-            if (params[i].base == NULL) {
-                AFLOG_ERR("af_rpc_create_buffer_with_params:null:param=%d:null param", i);
-                retVal = AF_RPC_ERR_BAD_PARAM;
-                goto exit;
+            if (size > 0) {
+                if (params[i].base == NULL) {
+                    AFLOG_ERR("af_rpc_create_buffer_with_params:null:param=%d:null param", i);
+                    retVal = AF_RPC_ERR_BAD_PARAM;
+                    goto exit;
+                }
+                memcpy(&buf[pos], params[i].base, size);
             }
-            memcpy(&buf[pos], params[i].base, size);
             pos += size;
         }
     }
@@ -429,7 +433,7 @@ int af_rpc_get_params_from_buffer(af_rpc_param_t *params, int numParams, uint8_t
         }
 
         /* get the type */
-        if (pos + sizeof(uint16_t) < len) {
+        if (pos + sizeof(uint16_t) <= len) {
             type = getlen(&buf[pos]);
             pos += sizeof(uint16_t);
         } else {
@@ -813,7 +817,9 @@ int af_rpc_get_blob_with_length_from_buffer_at_pos(void *blob, int *blobSize, ui
         return AF_RPC_ERR_BUFFER_OVERFLOW;
     }
 
-    memcpy(blob, &buf[pos], size);
+    if (size) {
+        memcpy(blob, &buf[pos], size);
+    }
     *blobSize = size;
     pos += size;
 
