@@ -235,12 +235,8 @@ add_client (af_ipcs_server_t *s, int  client_fd)
         if (client->recv_event == NULL) {
             AFLOG_ERR("add_client_recv_event::can't allocate receive event; closing");
             close_client(AF_IPC_STATUS_DONT_CALL_CALLBACK, client);
+            client == NULL;
         } else {
-            /* call the accept callback to inform the application of the new client */
-            if (s->acceptCallback) {
-                (s->acceptCallback)(s->acceptContext, client->cid, &client->clientContext);
-            }
-
             AFLOG_DEBUG1("ipc_server_connect:client_fd=%d", client_fd);
         }
     }
@@ -248,6 +244,11 @@ add_client (af_ipcs_server_t *s, int  client_fd)
     pthread_mutex_unlock(&s->clnt_mutex);
     // end mutex lock
     // **********************************
+
+    if (client && s->acceptCallback) {
+        (s->acceptCallback)(s->acceptContext, client->cid, &client->clientContext);
+    }
+
 
     return (client);
 }
