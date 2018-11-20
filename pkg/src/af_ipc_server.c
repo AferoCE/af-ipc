@@ -430,7 +430,7 @@ on_recv(evutil_socket_t fd, short events, void *arg)
                 if (recvmsg_len == 0) {
                     AFLOG_INFO("ipc_server_client_closed:fd=%d,errno=%d:client closed", fd, errno);
                 } else {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
                         break;
                     }
                     AFLOG_ERR("receive_error:fd=%d,errno=%d", fd, errno);
@@ -444,7 +444,7 @@ on_recv(evutil_socket_t fd, short events, void *arg)
                 af_ipc_handle_receive_message(fd, (uint8_t *)buf, recvmsg_len,
                                               client->cid, &client->req_control,
                                               client->server->receiveCallback,
-											  client->clientContext);
+                                              client->clientContext);
                 client->flags &= ~CLIENT_FLAGS_IN_RECEIVE;
                 if ((client->flags & CLIENT_FLAGS_MARKED_FOR_SHUTDOWN) != 0) {
                     close_client(AF_IPC_STATUS_OK, client);
